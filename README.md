@@ -16,4 +16,4 @@ This repository holds:
 | `idp-extraction-engine` | Per-document extraction + validation engine |
 | `idp-assistant-ui` | Chat UI + UX prototypes |
 
-See the **Wiki** for curated product-manager artifacts (vision, journey, API design, validation model).
+See the curated wiki at **[idp-product-wiki](https://github.com/r123singh/idp-product-wiki)** (and mirrored under [`wiki/`](wiki/) in this repo) for product-manager artifacts (vision, journey, API design, validation model).
