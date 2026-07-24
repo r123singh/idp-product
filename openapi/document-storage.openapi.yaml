@@ -1,0 +1,482 @@
+openapi: 3.1.0
+info:
+  title: Registry Document Storage API
+  version: 1.0.0
+  description: >
+    Standalone API for uploading documents to S3 and deleting them when no
+    longer needed. Returned `s3Uri` (and optional `httpsUrl`) values are intended
+    to be passed into the Document Processing Jobs API (`POST /v1/jobs` `files`
+    array) as document locations.
+
+
+    ## Typical flow
+
+    1. Client uploads one or more files → receives S3 URIs.
+
+    2. Client creates a processing job with those URIs in `files`.
+
+    3. After processing (or on user request), client deletes temporary uploads
+       from S3 using the delete endpoint.
+
+
+    This specification describes the contract only; implementation is not
+    bundled with the jobs service.
+
+  contact:
+    name: API Team
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://api.idp.local
+    description: Local API gateway
+  - url: https://api.example.com
+    description: Production
+
+tags:
+  - name: Files
+    description: Upload and delete documents in object storage (S3)
+
+security:
+  - oauth2:
+      - storage:write
+      - storage:delete
+  - ApiKeyAuth: []
+
+paths:
+  /v1/files:
+    post:
+      tags:
+        - Files
+      operationId: uploadFile
+      summary: Upload one or more files to S3
+      description: >
+        Accepts `multipart/form-data` with one or more file parts. Each file is
+        stored in the configured S3 bucket under a generated key (optionally
+        prefixed). The response returns the `s3Uri` and related metadata for
+        every uploaded file so the client can reference them in job creation or
+        other workflows.
+
+
+        Supported content types include `application/pdf`, `image/png`,
+        `image/jpeg`, and `image/tiff`. The server may reject unsupported types
+        with `415 Unsupported Media Type`.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UploadFilesRequest'
+            encoding:
+              files:
+                contentType: application/pdf, image/png, image/jpeg, image/tiff
+      responses:
+        '201':
+          description: All files uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadFilesResponse'
+              examples:
+                singleFile:
+                  summary: Single file uploaded
+                  value:
+                    status:
+                      code: 201
+                      message: File uploaded successfully
+                    files:
+                      - fileId: file_a1b2c3d4e5
+                        fileName: share_transfer_cert.pdf
+                        contentType: application/pdf
+                        size: 245780
+                        bucket: idp-docs
+                        key: incoming/2026/06/03/share_transfer_cert_a1b2c3d4.pdf
+                        s3Uri: s3://idp-docs/incoming/2026/06/03/share_transfer_cert_a1b2c3d4.pdf
+                        httpsUrl: https://idp-docs.s3.eu-west-1.amazonaws.com/incoming/2026/06/03/share_transfer_cert_a1b2c3d4.pdf
+                        uploadedAt: '2026-06-03T08:30:00Z'
+                multipleFiles:
+                  summary: Multiple files uploaded
+                  value:
+                    status:
+                      code: 201
+                      message: 2 file(s) uploaded successfully
+                    files:
+                      - fileId: file_a1b2c3d4e5
+                        fileName: share_transfer_cert.pdf
+                        contentType: application/pdf
+                        size: 245780
+                        bucket: idp-docs
+                        key: incoming/2026/06/03/share_transfer_cert_a1b2c3d4.pdf
+                        s3Uri: s3://idp-docs/incoming/2026/06/03/share_transfer_cert_a1b2c3d4.pdf
+                        httpsUrl: https://idp-docs.s3.eu-west-1.amazonaws.com/incoming/2026/06/03/share_transfer_cert_a1b2c3d4.pdf
+                        uploadedAt: '2026-06-03T08:30:00Z'
+                      - fileId: file_f6e5d4c3b2
+                        fileName: buyer_passport.png
+                        contentType: image/png
+                        size: 892340
+                        bucket: idp-docs
+                        key: incoming/2026/06/03/buyer_passport_f6e5d4c3.png
+                        s3Uri: s3://idp-docs/incoming/2026/06/03/buyer_passport_f6e5d4c3.png
+                        httpsUrl: https://idp-docs.s3.eu-west-1.amazonaws.com/incoming/2026/06/03/buyer_passport_f6e5d4c3.png
+                        uploadedAt: '2026-06-03T08:30:01Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          description: One or more files exceed the maximum allowed size
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status:
+                  code: 413
+                  message: File exceeds maximum upload size of 25 MB.
+                  errorCode: PAYLOAD_TOO_LARGE
+        '415':
+          description: Unsupported file type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status:
+                  code: 415
+                  message: Content type application/zip is not allowed.
+                  errorCode: UNSUPPORTED_MEDIA_TYPE
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          description: Object storage temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status:
+                  code: 503
+                  message: Could not write to object storage.
+                  errorCode: STORAGE_UNAVAILABLE
+
+    delete:
+      tags:
+        - Files
+      operationId: deleteFile
+      summary: Delete a file from S3
+      description: >
+        Removes the object identified by `s3Uri` or `key` from the storage
+        bucket. Exactly one of `s3Uri` or `key` must be supplied. The operation
+        is idempotent: deleting an object that no longer exists returns `204`
+        (or `404` if the implementation prefers strict existence checks — see
+        response descriptions).
+
+
+        Use this to clean up uploads that are no longer required. Deleting a
+        file that is still referenced by an active processing job does not
+        cancel that job; the jobs service may fail when it later reads the
+        object.
+      parameters:
+        - name: s3Uri
+          in: query
+          required: false
+          description: >
+            Full S3 URI of the object to delete, as returned by the upload
+            endpoint (e.g. `s3://idp-docs/incoming/...`).
+          schema:
+            type: string
+            pattern: '^s3://[a-z0-9][a-z0-9.-]{1,61}[a-z0-9](/.*)?$'
+          example: s3://idp-docs/incoming/2026/06/03/share_transfer_cert_a1b2c3d4.pdf
+        - name: key
+          in: query
+          required: false
+          description: >
+            Object key within the default bucket, if `s3Uri` is not used. Must
+            not include a leading slash.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 1024
+          example: incoming/2026/06/03/share_transfer_cert_a1b2c3d4.pdf
+        - name: bucket
+          in: query
+          required: false
+          description: >
+            Bucket name when using `key` only. When omitted, the service default
+            upload bucket is used.
+          schema:
+            type: string
+            minLength: 3
+            maxLength: 63
+          example: idp-docs
+      responses:
+        '204':
+          description: Object deleted (or already absent, if idempotent)
+        '400':
+          description: Neither s3Uri nor key was provided, or parameters are invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status:
+                  code: 400
+                  message: Provide either s3Uri or key to identify the object to delete.
+                  errorCode: INVALID_REQUEST
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Object not found (strict mode implementations only)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status:
+                  code: 404
+                  message: The specified object does not exist in storage.
+                  errorCode: RESOURCE_NOT_FOUND
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          description: Object storage temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status:
+                  code: 503
+                  message: Could not delete from object storage.
+                  errorCode: STORAGE_UNAVAILABLE
+
+components:
+  securitySchemes:
+    oauth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.idp.local/oauth2/authorize
+          tokenUrl: https://auth.idp.local/oauth2/token
+          scopes:
+            storage:write: Upload files to object storage
+            storage:delete: Delete files from object storage
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: API key for service-to-service or local development access
+
+  schemas:
+    Status:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: integer
+          minimum: 100
+          maximum: 599
+          example: 201
+        message:
+          type: string
+          minLength: 1
+          maxLength: 300
+          example: File uploaded successfully
+        errorCode:
+          type: string
+          description: Machine-readable error code when `code` indicates failure
+          example: INVALID_REQUEST
+
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+
+    UploadFilesRequest:
+      type: object
+      required:
+        - files
+      properties:
+        files:
+          type: array
+          description: One or more files to upload (multipart parts named `files`).
+          items:
+            type: string
+            format: binary
+          minItems: 1
+          maxItems: 20
+        prefix:
+          type: string
+          description: >
+            Optional logical folder prefix under the bucket (e.g. `incoming/2026/06/03`).
+            The service appends a unique segment and sanitised file name.
+          maxLength: 256
+          example: incoming/share-transfer
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+          description: Optional client metadata stored as S3 object tags or sidecar metadata
+          example:
+            requestId: REQ-2026-003
+            uploadedBy: portal-user-42
+
+    StoredFile:
+      type: object
+      additionalProperties: false
+      required:
+        - fileId
+        - fileName
+        - s3Uri
+        - bucket
+        - key
+        - uploadedAt
+      properties:
+        fileId:
+          type: string
+          description: Server-assigned identifier for this upload
+          pattern: '^file_[a-z0-9]{8,16}$'
+          example: file_a1b2c3d4e5
+        fileName:
+          type: string
+          description: Original file name from the upload
+          example: share_transfer_cert.pdf
+        contentType:
+          type: string
+          description: MIME type detected or declared for the object
+          example: application/pdf
+        size:
+          type: integer
+          description: File size in bytes
+          minimum: 1
+          example: 245780
+        bucket:
+          type: string
+          description: S3 bucket name
+          example: idp-docs
+        key:
+          type: string
+          description: Object key within the bucket (no `s3://` prefix)
+          example: incoming/2026/06/03/share_transfer_cert_a1b2c3d4.pdf
+        s3Uri:
+          type: string
+          description: >
+            Canonical URI to pass to the jobs API and other consumers
+            (`s3://bucket/key`).
+          pattern: '^s3://[a-z0-9][a-z0-9.-]{1,61}[a-z0-9](/.*)?$'
+          example: s3://idp-docs/incoming/2026/06/03/share_transfer_cert_a1b2c3d4.pdf
+        httpsUrl:
+          type: string
+          format: uri
+          description: >
+            HTTPS URL for direct download (presigned or public, depending on
+            bucket policy). Optional; may expire when presigned.
+          example: https://idp-docs.s3.eu-west-1.amazonaws.com/incoming/2026/06/03/share_transfer_cert_a1b2c3d4.pdf
+        etag:
+          type: string
+          description: S3 entity tag returned by PutObject
+          example: '"d41d8cd98f00b204e9800998ecf8427e"'
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+          description: Echo of client metadata supplied on upload
+        uploadedAt:
+          type: string
+          format: date-time
+          example: '2026-06-03T08:30:00Z'
+
+    UploadFilesResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - files
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/StoredFile'
+          minItems: 1
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            status:
+              code: 400
+              message: Invalid request payload.
+              errorCode: INVALID_REQUEST
+
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            status:
+              code: 401
+              message: Missing or invalid authentication token.
+              errorCode: UNAUTHORIZED
+
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            status:
+              code: 403
+              message: Insufficient scope for this operation.
+              errorCode: FORBIDDEN
+
+    RateLimitExceeded:
+      description: Rate limit exceeded
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            status:
+              code: 429
+              message: Too many requests.
+              errorCode: RATE_LIMIT_EXCEEDED
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            status:
+              code: 500
+              message: Internal server error.
+              errorCode: INTERNAL_ERROR

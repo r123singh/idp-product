@@ -1,0 +1,219 @@
+{
+    "documentType": "emiratesId",
+    "documentTitle": "Emirates ID",
+    "sections": [
+        {
+            "id": "mrz",
+            "name": "Machine-Readable Zone"
+        },
+        {
+            "id": "documentInfo",
+            "name": "Document Information"
+        },
+        {
+            "id": "personalInfo",
+            "name": "Personal Information"
+        },
+        {
+            "id": "cardDetails",
+            "name": "Card Details"
+        },
+        {
+            "id": "employmentInfo",
+            "name": "Employment Information"
+        }
+    ],
+    "fields": [
+        {
+            "key": "mrzLine1",
+            "label": "MRZ Line 1",
+            "sectionId": "mrz",
+            "dataType": "string",
+            "required": true
+        },
+        {
+            "key": "mrzLine2",
+            "label": "MRZ Line 2",
+            "sectionId": "mrz",
+            "dataType": "string",
+            "required": true
+        },
+        {
+            "key": "mrzLine3",
+            "label": "MRZ Line 3",
+            "sectionId": "mrz",
+            "dataType": "string",
+            "required": true
+        },
+        {
+            "key": "documentType",
+            "label": "Document Type",
+            "sectionId": "documentInfo",
+            "dataType": "string",
+            "required": true,
+            "enum": ["emiratesId"]
+        },
+        {
+            "key": "emiratesIdNumber",
+            "label": "Emirates ID Number",
+            "sectionId": "documentInfo",
+            "dataType": "string",
+            "required": true,
+            "pattern": "^784-[0-9]{4}-[0-9]{7}-[0-9]$"
+        },
+        {
+            "key": "fullName",
+            "label": "Full Name",
+            "sectionId": "documentInfo",
+            "dataType": "string",
+            "required": true
+        },
+        {
+            "key": "dateOfBirth",
+            "label": "Date Of Birth",
+            "sectionId": "personalInfo",
+            "dataType": "date",
+            "required": true,
+            "format": "date"
+        },
+        {
+            "key": "nationality",
+            "label": "Nationality",
+            "sectionId": "personalInfo",
+            "dataType": "string",
+            "required": true
+        },
+        {
+            "key": "gender",
+            "label": "Gender",
+            "sectionId": "personalInfo",
+            "dataType": "string",
+            "required": true
+        },
+        {
+            "key": "issuingDate",
+            "label": "Issuing Date",
+            "sectionId": "cardDetails",
+            "dataType": "date",
+            "required": true,
+            "format": "date"
+        },
+        {
+            "key": "expiryDate",
+            "label": "Expiry Date",
+            "sectionId": "cardDetails",
+            "dataType": "date",
+            "required": true,
+            "format": "date"
+        },
+        {
+            "key": "cardNumber",
+            "label": "Card Number",
+            "sectionId": "cardDetails",
+            "dataType": "string",
+            "required": true
+        },
+        {
+            "key": "issuingPlace",
+            "label": "Issuing Place",
+            "sectionId": "cardDetails",
+            "dataType": "string",
+            "required": true
+        },
+        {
+            "key": "occupation",
+            "label": "Occupation",
+            "sectionId": "employmentInfo",
+            "dataType": "string",
+            "required": true
+        },
+        {
+            "key": "employerName",
+            "label": "Employer Name",
+            "sectionId": "employmentInfo",
+            "dataType": "string",
+            "required": true
+        },
+        {
+            "key": "signature",
+            "label": "Signature",
+            "sectionId": "signature",
+            "dataType": "object",
+            "required": true,
+            "properties": {
+                "present": {
+                    "dataType": "boolean",
+                    "required": true
+                },
+                "confidence_score": {
+                    "dataType": "number",
+                    "required": true
+                }
+            }
+        }
+    ]
+    ,
+    "validationRules": [
+        {
+            "id": "EID_NUMBER_FORMAT",
+            "type": "regex",
+            "fieldKey": "emiratesIdNumber",
+            "value": "^784-[0-9]{4}-[0-9]{7}-[0-9]$",
+            "message": "Emirates ID Number must match 784-XXXX-XXXXXXX-X format."
+        },
+        {
+            "id": "EID_ISSUING_DATE_PAST_OR_TODAY",
+            "type": "datePastOrToday",
+            "fieldKey": "issuingDate",
+            "message": "Issuing date must be today or earlier."
+        },
+        {
+            "id": "EID_NOT_EXPIRING_WITHIN_3_MONTHS",
+            "type": "dateFuture",
+            "fieldKey": "expiryDate",
+            "message": "Expiry date must be at least 3 months ahead."
+        },
+        {
+            "id": "EID_SIGNATURE_PRESENT",
+            "type": "signaturePresent",
+            "fieldKey": "signature",
+            "message": "Signature must be present."
+        },
+        {
+            "id": "EID_FULL_NAME_MRZ_CHECK",
+            "type": "stringCheck",
+            "fieldKey": "fullName",
+            "message": "Full name must match the name mentioned in the MRZ line 1 or line 2 or line 3."
+        },
+        {
+            "id": "EID_DATE_OF_BIRTH_MRZ_CHECK",
+            "type": "dateCheck",
+            "fieldKey": "dateOfBirth",
+            "message": "Date of birth must match the date of birth mentioned in the MRZ line 1 or line 2 or line 3."
+        },
+        {
+            "id": "EID_NATIONALITY_MRZ_CHECK",
+            "type": "stringCheck",
+            "fieldKey": "nationality",
+            "message": "Nationality must match the nationality mentioned in the MRZ line 1 or line 2 or line 3."
+        },
+        {
+            "id": "EID_GENDER_MRZ_CHECK",
+            "type": "stringCheck",
+            "fieldKey": "gender",
+            "message": "Gender must match the gender mentioned in the MRZ line 1 or line 2 or line 3."
+        },
+        {
+            "id": "EID_ISSUING_DATE_MRZ_CHECK",
+            "type": "dateCheck",
+            "fieldKey": "issuingDate",
+            "message": "Issuing date must match the issuing date mentioned in the MRZ line 1 or line 2 or line 3."
+        },
+        {
+            "id": "EID_EXPIRY_DATE_MRZ_CHECK",
+            "type": "dateCheck",
+            "fieldKey": "expiryDate",
+            "message": "Expiry date must match the expiry date mentioned in the MRZ line 1 or line 2 or line 3."
+        }
+    ]
+}

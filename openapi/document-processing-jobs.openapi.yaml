@@ -1,0 +1,2226 @@
+openapi: 3.1.0
+info:
+  title: Intelligent Document Processing & Extraction API
+  version: 1.0.0
+  description: >
+    Async document processing API for Share Transfer workflows.
+    Supports bulk and single document upload, background extraction via LLM,
+    schema-driven validation, and per-document transaction tracking within jobs.
+
+
+    ## Workflow
+
+    1. Client submits one or more documents → receives a Job ID
+
+    2. Backend processes each document in parallel (upload → extract → validate)
+
+    3. Client polls job/document status or receives webhook callbacks
+
+    4. Client retrieves extracted data and validation results per document
+
+  contact:
+    name: API Team
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://api.idp.local
+    description: Local API gateway
+  - url: https://api.example.com
+    description: Production
+
+tags:
+  - name: Jobs
+    description: Async document processing job lifecycle
+  - name: Documents
+    description: Per-document transactions within a job
+  - name: Webhooks
+    description: Webhook configuration for async notifications
+
+security:
+  - oauth2:
+      - jobs:write
+      - jobs:read
+      - documents:read
+
+paths:
+  # ──────────────────────────────────────────────────────────────────
+  # JOB ENDPOINTS
+  # ──────────────────────────────────────────────────────────────────
+  /v1/jobs:
+    post:
+      tags:
+        - Jobs
+      operationId: createJob
+      summary: Submit documents for async processing
+      description: >
+        Submit one or more document locations to create an async processing job.
+        The request is a JSON object whose `files` field is an array of file
+        path / URI strings (local path, s3:// URI or https:// URL). Each file is
+        tracked as a separate transaction within the job. The `jobType` frames
+        the business request (e.g. a Share transfer). Returns a job ID
+        immediately; processing runs in the background.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateJobRequest'
+            example:
+              jobType: shareTransfer
+              files:
+                - /data/incoming/share_transfer_cert.pdf
+                - s3://idp-docs/incoming/buyer_passport.png
+              priority: NORMAL
+              metadata:
+                requestId: REQ-2026-001
+      responses:
+        '202':
+          description: Job accepted for processing
+          headers:
+            Location:
+              description: URL to poll job status
+              schema:
+                type: string
+                format: uri
+                example: /v1/jobs/job_8f3a2b1c
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateJobResponse'
+              example:
+                status:
+                  code: 202
+                  message: Job accepted for processing
+                job:
+                  jobId: job_8f3a2b1c
+                  jobType: shareTransfer
+                  status: ACCEPTED
+                  totalDocuments: 1
+                  createdAt: '2026-05-22T10:30:00Z'
+                  documents:
+                    - documentId: doc_a1b2c3d4
+                      fileName: share_transfer_cert.pdf
+                      documentType: shareTransferCertificate
+                      status: QUEUED
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          description: Payload too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status:
+                  code: 413
+                  message: File size exceeds maximum allowed (25MB per file).
+                  errorCode: PAYLOAD_TOO_LARGE
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    get:
+      tags:
+        - Jobs
+      operationId: listJobs
+      summary: List processing jobs
+      description: >
+        Retrieve a paginated list of jobs with optional status filtering.
+      parameters:
+        - name: status
+          in: query
+          description: Filter by job status
+          schema:
+            $ref: '#/components/schemas/JobStatus'
+        - name: jobType
+          in: query
+          description: Filter by job type
+          schema:
+            $ref: '#/components/schemas/JobType'
+        - name: createdAfter
+          in: query
+          description: Filter jobs created after this timestamp
+          schema:
+            type: string
+            format: date-time
+        - name: createdBefore
+          in: query
+          description: Filter jobs created before this timestamp
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          description: Number of results per page (max 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          description: Pagination cursor from previous response
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Job list retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListJobsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/jobs/{jobId}:
+    get:
+      tags:
+        - Jobs
+      operationId: getJobStatus
+      summary: Get job status and progress
+      description: >
+        Poll this endpoint to check whether a job has completed.
+        Returns overall job status and a summary of document-level progress.
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: Job status retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetJobResponse'
+              examples:
+                inProgress:
+                  summary: Job still processing
+                  value:
+                    status:
+                      code: 200
+                      message: Success
+                    job:
+                      jobId: job_8f3a2b1c
+                      status: PROCESSING
+                      totalDocuments: 1
+                      completedDocuments: 0
+                      failedDocuments: 0
+                      progress:
+                        percentage: 45
+                        currentStage: EXTRACTING
+                      createdAt: '2026-05-22T10:30:00Z'
+                      updatedAt: '2026-05-22T10:30:12Z'
+                completed:
+                  summary: Job completed successfully
+                  value:
+                    status:
+                      code: 200
+                      message: Success
+                    job:
+                      jobId: job_8f3a2b1c
+                      status: COMPLETED
+                      totalDocuments: 1
+                      completedDocuments: 1
+                      failedDocuments: 0
+                      progress:
+                        percentage: 100
+                        currentStage: DONE
+                      workflowValidation:
+                        status: FAILED
+                        summary:
+                          totalChecks: 3
+                          passed: 2
+                          failed: 1
+                          warnings: 0
+                        expectedDocuments: 3
+                        presentDocuments: 2
+                        missingDocuments:
+                          - Passport for Onur Yegenoglu (transferee) has not been uploaded.
+                        checks:
+                          - checkId: PRIMARY_DOCUMENT_PRESENT
+                            name: Share transfer certificate present
+                            passed: true
+                            severity: error
+                            documentType: shareTransferCertificate
+                          - checkId: PARTY_PASSPORT:transferor:onur_omer_emre
+                            name: Passport per party
+                            passed: true
+                            severity: error
+                            subject: Onur Omer Emre
+                            documentType: passport
+                          - checkId: PARTY_PASSPORT:transferee:onur_yegenoglu
+                            name: Passport per party
+                            passed: false
+                            severity: error
+                            subject: Onur Yegenoglu
+                            documentType: passport
+                            message: Passport for Onur Yegenoglu (transferee) has not been uploaded.
+                      createdAt: '2026-05-22T10:30:00Z'
+                      updatedAt: '2026-05-22T10:30:28Z'
+                      completedAt: '2026-05-22T10:30:28Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/jobs/{jobId}/detail:
+    get:
+      tags:
+        - Jobs
+      operationId: getJobDetail
+      summary: Get complete job detail for interactive UI
+      description: >
+        Returns everything needed to render a job review screen in one response:
+        job overview (including `overallHealth`, `canCancel`, `canRetry`),
+        `workflowValidation`, `correctionPlan`, full document transactions
+        (extraction + validation inline), and UI-oriented `highlights`,
+        `issues`, and `timeline` sections. Use `GET /v1/jobs/{jobId}` for
+        lightweight polling; use this endpoint when opening a detail view.
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: Job detail retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetJobDetailResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/jobs/{jobId}/cancel:
+    post:
+      tags:
+        - Jobs
+      operationId: cancelJob
+      summary: Cancel a running job
+      description: >
+        Attempts to cancel an in-progress job. Documents already completed
+        retain their results. Only ACCEPTED and PROCESSING jobs can be cancelled.
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: Job cancellation accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancelJobResponse'
+              example:
+                status:
+                  code: 200
+                  message: Job cancellation initiated
+                job:
+                  jobId: job_8f3a2b1c
+                  status: CANCELLING
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Job cannot be cancelled (already completed/failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status:
+                  code: 409
+                  message: Job is already in terminal state COMPLETED.
+                  errorCode: CONFLICT
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/jobs/{jobId}/retry:
+    post:
+      tags:
+        - Jobs
+      operationId: retryFailedDocuments
+      summary: 'Correct a job in place: re-run, replace or add documents'
+      description: >
+        Same-job correction flow. The job keeps its `jobId` and is re-evaluated
+        (including `workflowValidation`) afterwards. Supports any combination of
+        three actions:
+
+
+        * **Re-run** technical failures — `documentIds` (or an empty body to
+          re-run all FAILED documents) re-processes the same `source`.
+
+        * **Replace** an invalid document — `replaceDocuments` swaps a document's
+          `source` for a corrected one and re-processes it.
+
+        * **Add** a missing document — `addFiles` appends new document(s),
+          closing missing-document gaps reported by `workflowValidation`.
+
+
+        The job must be in a terminal state (COMPLETED, PARTIALLY_COMPLETED,
+        FAILED or CANCELLED) — you cannot retry a job that is still processing.
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RetryJobRequest'
+            examples:
+              rerunAllFailed:
+                summary: Re-run all failed documents (transient errors)
+                value: {}
+              addMissingPassport:
+                summary: Add a missing party's passport
+                value:
+                  addFiles:
+                    - https://example.com/files/sample.pdf
+              replaceInvalidCertificate:
+                summary: Replace an invalid share transfer certificate
+                value:
+                  replaceDocuments:
+                    - documentId: doc_4ce7fdc342
+                      source: https://example.com/files/sample.pdf
+      responses:
+        '202':
+          description: Retry accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetryJobResponse'
+              example:
+                status:
+                  code: 202
+                  message: 'Retry initiated: 0 re-run, 1 added, 0 replaced'
+                retriedDocuments: []
+                addedDocuments:
+                  - doc_99aa88bb77
+                job:
+                  jobId: job_8f3a2b1c
+                  jobType: shareTransfer
+                  status: PROCESSING
+                  totalDocuments: 3
+        '400':
+          description: Invalid request (e.g. exceeds the per-job document limit)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Nothing to retry, or the job is still processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status:
+                  code: 409
+                  message: 'Nothing to retry: no FAILED documents and no files to add or replace.'
+                  errorCode: NO_RETRYABLE_DOCUMENTS
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ──────────────────────────────────────────────────────────────────
+  # DOCUMENT TRANSACTION ENDPOINTS
+  # ──────────────────────────────────────────────────────────────────
+  /v1/jobs/{jobId}/documents:
+    get:
+      tags:
+        - Documents
+      operationId: listJobDocuments
+      summary: List all document transactions in a job
+      description: >
+        Returns each document's lifecycle status (upload, extraction, validation)
+        as a separate transaction record within the job.
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - name: status
+          in: query
+          description: Filter by document processing status
+          schema:
+            $ref: '#/components/schemas/DocumentProcessingStatus'
+      responses:
+        '200':
+          description: Document list retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListDocumentsResponse'
+              example:
+                status:
+                  code: 200
+                  message: Success
+                documents:
+                  - documentId: doc_a1b2c3d4
+                    fileName: share_transfer_cert.pdf
+                    documentType: shareTransferCertificate
+                    status: COMPLETED
+                    extractionStatus: COMPLETED
+                    validationStatus: COMPLETED
+                    createdAt: '2026-05-22T10:30:00Z'
+                    completedAt: '2026-05-22T10:30:28Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/jobs/{jobId}/documents/{documentId}:
+    get:
+      tags:
+        - Documents
+      operationId: getDocumentTransaction
+      summary: Get full document transaction details
+      description: >
+        Returns the complete transaction record for a single document including
+        upload metadata, extraction results, and validation outcomes.
+        This is the primary endpoint for retrieving processed results.
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: Document transaction retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetDocumentTransactionResponse'
+              examples:
+                shareTransferCompleted:
+                  summary: Share Transfer Certificate - fully processed
+                  value:
+                    status:
+                      code: 200
+                      message: Success
+                    document:
+                      documentId: doc_a1b2c3d4
+                      jobId: job_8f3a2b1c
+                      fileName: share_transfer_cert.pdf
+                      source: https://example.com/files/sample.pdf
+                      fileSize: 245780
+                      mimeType: application/pdf
+                      documentType: shareTransferCertificate
+                      status: COMPLETED
+                      extraction:
+                        status: COMPLETED
+                        startedAt: '2026-05-22T10:30:02Z'
+                        completedAt: '2026-05-22T10:30:18Z'
+                        durationMs: 16000
+                        modelUsed: anthropic.claude-sonnet-4-6-20250514
+                        confidence: 0.94
+                        data:
+                          companyName: Acme Holdings Registry
+                          entityNumber: ENT123456
+                          documentTitle: Share Transfer Certificate
+                          transferors:
+                            - name: John Smith
+                              shareType: Ordinary Share
+                              numberOfShares: 1000
+                              valuePerShare:
+                                value: 1.00
+                                currency: AED
+                          transaction:
+                            - sellerName: John Smith
+                              buyerName: Jane Doe
+                              buyerRegistrationNumber: REG-2024-001
+                              shareTypeTransferred: Ordinary Share
+                              numberOfSharesTransferred: 500
+                              valuePerShareTransferred:
+                                value: 1.00
+                                currency: AED
+                              buyerSignature:
+                                present: true
+                                confidence_score: 0.92
+                          transferees:
+                            - name: Jane Doe
+                              registrationNumber: REG-2024-001
+                              shareTypeAfterTransfer: Ordinary Share
+                              numberOfSharesAfterTransfer: 500
+                              valuePerShareAfterTransfer:
+                                value: 1.00
+                                currency: AED
+                          transferDate: '2026-05-20'
+                          transfereeSignature:
+                            - name: Jane Doe
+                              signature:
+                                present: true
+                                confidence_score: 0.89
+                          transferorSignature:
+                            - name: John Smith
+                              signature:
+                                present: true
+                                confidence_score: 0.91
+                          approvingSignature:
+                            - name: Board Secretary
+                              signature:
+                                present: true
+                                confidence_score: 0.87
+                      validation:
+                        status: COMPLETED
+                        startedAt: '2026-05-22T10:30:18Z'
+                        completedAt: '2026-05-22T10:30:19Z'
+                        summary:
+                          totalRules: 7
+                          passed: 7
+                          failed: 0
+                          warnings: 0
+                        results:
+                          - ruleId: TRANSFER_DATE_PAST_OR_TODAY
+                            ruleName: Transfer Date Check
+                            passed: true
+                            message: null
+                          - ruleId: ENTITY_NUMBER_PATTERN
+                            ruleName: Entity Number Pattern
+                            passed: true
+                            message: null
+                          - ruleId: DOCUMENT_TITLE_CHECK
+                            ruleName: Document Title Check
+                            passed: true
+                            message: null
+                          - ruleId: TRASNFERRED_SHARES_CHECK
+                            ruleName: Transferred Shares Check
+                            passed: true
+                            message: null
+                          - ruleId: TRANSACTION_TRANSFEROR_NAME_CHECK
+                            ruleName: Transaction Transferor Name Match
+                            passed: true
+                            message: null
+                          - ruleId: TRANSACTION_SHARE_TYPE_CHECK
+                            ruleName: Transaction Share Type Match
+                            passed: true
+                            message: null
+                          - ruleId: TRANSACTION_VALUE_PER_SHARE_CURRENCY_CHECK
+                            ruleName: Value Per Share Currency Match
+                            passed: true
+                            message: null
+                      createdAt: '2026-05-22T10:30:00Z'
+                      updatedAt: '2026-05-22T10:30:19Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/jobs/{jobId}/documents/{documentId}/extraction:
+    get:
+      tags:
+        - Documents
+      operationId: getDocumentExtraction
+      summary: Get extracted data only
+      description: >
+        Returns just the extraction results for a specific document.
+        Useful when you only need the structured data without validation details.
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: Extraction data retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetExtractionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Extraction not yet complete
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status:
+                  code: 409
+                  message: Extraction is still in progress.
+                  errorCode: EXTRACTION_PENDING
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/jobs/{jobId}/documents/{documentId}/validations:
+    get:
+      tags:
+        - Documents
+      operationId: getDocumentValidations
+      summary: Get validation results only
+      description: >
+        Returns the validation rule outcomes for a specific document.
+        Each rule is evaluated against the extracted data and returns pass/fail.
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: Validation results retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetValidationsResponse'
+              example:
+                status:
+                  code: 200
+                  message: Success
+                validation:
+                  status: COMPLETED
+                  summary:
+                    totalRules: 7
+                    passed: 6
+                    failed: 1
+                    warnings: 0
+                  results:
+                    - ruleId: TRANSFER_DATE_PAST_OR_TODAY
+                      ruleName: Transfer Date Check
+                      passed: true
+                      message: null
+                    - ruleId: ENTITY_NUMBER_PATTERN
+                      ruleName: Entity Number Pattern
+                      passed: false
+                      message: "Entity Number must follow the pattern ENT followed by 3 to 12 digits."
+                      extractedValue: "DM123456"
+                    - ruleId: DOCUMENT_TITLE_CHECK
+                      ruleName: Document Title Check
+                      passed: true
+                      message: null
+                    - ruleId: TRASNFERRED_SHARES_CHECK
+                      ruleName: Transferred Shares Check
+                      passed: true
+                      message: null
+                    - ruleId: TRANSACTION_TRANSFEROR_NAME_CHECK
+                      ruleName: Transaction Transferor Name Match
+                      passed: true
+                      message: null
+                    - ruleId: TRANSACTION_SHARE_TYPE_CHECK
+                      ruleName: Transaction Share Type Match
+                      passed: true
+                      message: null
+                    - ruleId: TRANSACTION_VALUE_PER_SHARE_CURRENCY_CHECK
+                      ruleName: Value Per Share Currency Match
+                      passed: true
+                      message: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Validation not yet complete
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status:
+                  code: 409
+                  message: Validation has not started or is still in progress.
+                  errorCode: VALIDATION_PENDING
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ──────────────────────────────────────────────────────────────────
+  # WEBHOOK CONFIGURATION
+  # ──────────────────────────────────────────────────────────────────
+  /v1/webhooks:
+    post:
+      tags:
+        - Webhooks
+      operationId: registerWebhook
+      summary: Register a webhook for job completion events
+      description: >
+        Register a callback URL to receive notifications when jobs complete,
+        instead of polling. Supports job.completed, job.failed, and
+        document.completed events.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterWebhookRequest'
+            example:
+              url: https://client.example.com/webhooks/idp
+              events:
+                - job.completed
+                - job.failed
+                - document.validated
+              secret: whsec_a1b2c3d4e5f6
+      responses:
+        '201':
+          description: Webhook registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterWebhookResponse'
+              example:
+                status:
+                  code: 201
+                  message: Webhook registered successfully
+                webhook:
+                  webhookId: whk_xyz789
+                  url: https://client.example.com/webhooks/idp
+                  events:
+                    - job.completed
+                    - job.failed
+                    - document.validated
+                  active: true
+                  createdAt: '2026-05-22T08:00:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    get:
+      tags:
+        - Webhooks
+      operationId: listWebhooks
+      summary: List registered webhooks
+      responses:
+        '200':
+          description: Webhooks listed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListWebhooksResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/webhooks/{webhookId}:
+    delete:
+      tags:
+        - Webhooks
+      operationId: deleteWebhook
+      summary: Remove a registered webhook
+      parameters:
+        - name: webhookId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: whk_xyz789
+      responses:
+        '204':
+          description: Webhook deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+# ════════════════════════════════════════════════════════════════════════
+# COMPONENTS
+# ════════════════════════════════════════════════════════════════════════
+components:
+  securitySchemes:
+    oauth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.idp.local/oauth2/authorize
+          tokenUrl: https://auth.idp.local/oauth2/token
+          scopes:
+            jobs:write: Create and manage processing jobs
+            jobs:read: Read job status and results
+            documents:read: Read document extraction and validation data
+            webhooks:manage: Manage webhook subscriptions
+
+  parameters:
+    JobId:
+      name: jobId
+      in: path
+      required: true
+      description: Unique job identifier
+      schema:
+        type: string
+        pattern: '^job_[a-z0-9]{8,16}$'
+        example: job_8f3a2b1c
+
+    DocumentId:
+      name: documentId
+      in: path
+      required: true
+      description: Unique document transaction identifier within a job
+      schema:
+        type: string
+        pattern: '^doc_[a-z0-9]{8,16}$'
+        example: doc_a1b2c3d4
+
+  # ────────────────────────────────────────────────────────────────────
+  # SCHEMAS
+  # ────────────────────────────────────────────────────────────────────
+  schemas:
+    # ─── Enums ─────────────────────────────────────────────────────────
+    JobType:
+      type: string
+      description: >
+        Business job type that frames the processing request. A job groups one
+        or more documents that are processed and validated together. New job
+        types can be added server-side (see job_types.json).
+      enum:
+        - shareTransfer
+      example: shareTransfer
+
+    DocumentType:
+      type: string
+      description: >
+        Type of an individual document within a job. Auto-detected per file
+        during extraction.
+      enum:
+        - shareTransferCertificate
+        - passport
+        - emiratesId
+        - proofOfAddress
+      example: shareTransferCertificate
+
+    JobStatus:
+      type: string
+      enum:
+        - ACCEPTED
+        - PROCESSING
+        - COMPLETED
+        - PARTIALLY_COMPLETED
+        - FAILED
+        - CANCELLING
+        - CANCELLED
+      description: >
+        - ACCEPTED: Job received, queued for processing
+
+        - PROCESSING: At least one document is being processed
+
+        - COMPLETED: All documents processed successfully
+
+        - PARTIALLY_COMPLETED: Some documents succeeded, some failed
+
+        - FAILED: All documents failed processing
+
+        - CANCELLING: Cancellation in progress
+
+        - CANCELLED: Job was cancelled
+
+    DocumentProcessingStatus:
+      type: string
+      enum:
+        - QUEUED
+        - EXTRACTING
+        - VALIDATING
+        - COMPLETED
+        - FAILED
+      description: >
+        Lifecycle stages of a document transaction within a job. Extraction is
+        delegated to the upstream doc-parser service, so there is no separate
+        upload stage — the file is referenced by `source`.
+
+    ExtractionStatus:
+      type: string
+      enum:
+        - PENDING
+        - IN_PROGRESS
+        - COMPLETED
+        - FAILED
+
+    ValidationStatus:
+      type: string
+      enum:
+        - PENDING
+        - IN_PROGRESS
+        - COMPLETED
+        - SKIPPED
+        - FAILED
+
+    WebhookEvent:
+      type: string
+      enum:
+        - job.completed
+        - job.failed
+        - job.cancelled
+        - document.extracted
+        - document.validated
+        - document.failed
+
+    # ─── Common ────────────────────────────────────────────────────────
+    Status:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: integer
+          minimum: 100
+          maximum: 599
+          example: 200
+        message:
+          type: string
+          minLength: 1
+          maxLength: 300
+          example: Success
+        errorCode:
+          type: string
+          pattern: '^[A-Z0-9_]{3,100}$'
+          example: INVALID_REQUEST
+
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+      properties:
+        status:
+          allOf:
+            - $ref: '#/components/schemas/Status'
+            - type: object
+              required:
+                - errorCode
+
+    # ─── Job Schemas ───────────────────────────────────────────────────
+    CreateJobRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - jobType
+        - files
+      properties:
+        jobType:
+          $ref: '#/components/schemas/JobType'
+          description: >
+            Business job type framing the request (e.g. shareTransfer). Drives
+            which document types are relevant to the job.
+        files:
+          type: array
+          description: >
+            One or more document locations to process. Each entry is a string:
+            a local file path, an s3:// URI or an https:// URL.
+          items:
+            type: string
+          minItems: 1
+          maxItems: 20
+          example:
+            - /data/incoming/share_transfer_cert.pdf
+            - s3://idp-docs/incoming/buyer_passport.png
+        callbackUrl:
+          type: string
+          format: uri
+          description: Optional URL to POST results when job completes
+          example: https://client.example.com/callbacks/job-done
+        priority:
+          type: string
+          enum:
+            - LOW
+            - NORMAL
+            - HIGH
+          default: NORMAL
+          description: Processing priority for the job
+        metadata:
+          type: object
+          description: Arbitrary client metadata attached to the job
+          additionalProperties:
+            type: string
+          example:
+            requestId: REQ-2026-001
+            submittedBy: portal-user-42
+
+    CreateJobResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - job
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        job:
+          $ref: '#/components/schemas/JobSummary'
+
+    JobSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - jobId
+        - status
+        - totalDocuments
+        - createdAt
+      properties:
+        jobId:
+          type: string
+          example: job_8f3a2b1c
+        jobType:
+          $ref: '#/components/schemas/JobType'
+        status:
+          $ref: '#/components/schemas/JobStatus'
+        totalDocuments:
+          type: integer
+          minimum: 1
+        completedDocuments:
+          type: integer
+          minimum: 0
+        failedDocuments:
+          type: integer
+          minimum: 0
+        progress:
+          $ref: '#/components/schemas/JobProgress'
+        workflowValidation:
+          $ref: '#/components/schemas/WorkflowValidation'
+          description: >
+            Cross-document validation result for the job (present for job types
+            with configured workflow rules, e.g. shareTransfer). Returned on the
+            job detail endpoint.
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/DocumentSummary'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          description: Set when job reaches a terminal state
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+
+    # ─── Workflow (cross-document) validation ──────────────────────────
+    WorkflowValidation:
+      type: object
+      additionalProperties: false
+      description: >
+        Job-level validation that cross-checks the full set of documents against
+        the business rules of the jobType — e.g. every share-transfer party must
+        have a passport uploaded. Deterministic and rules-driven (no LLM).
+      required:
+        - status
+        - summary
+        - expectedDocuments
+        - presentDocuments
+        - checks
+      properties:
+        status:
+          type: string
+          enum:
+            - PASSED
+            - FAILED
+            - INCOMPLETE
+          description: >
+            PASSED: all required cross-document checks satisfied.
+            FAILED: at least one required check failed.
+            INCOMPLETE: documents still processing or the primary document is
+            missing, so checks could not be fully evaluated.
+        summary:
+          type: object
+          additionalProperties: false
+          required:
+            - totalChecks
+            - passed
+            - failed
+            - warnings
+          properties:
+            totalChecks:
+              type: integer
+              minimum: 0
+            passed:
+              type: integer
+              minimum: 0
+            failed:
+              type: integer
+              minimum: 0
+            warnings:
+              type: integer
+              minimum: 0
+        expectedDocuments:
+          type: integer
+          minimum: 0
+          description: Number of documents expected for this job (primary + per-party).
+        presentDocuments:
+          type: integer
+          minimum: 0
+          description: Number of expected documents actually present and matched.
+        missingDocuments:
+          type: array
+          items:
+            type: string
+          description: Human-readable descriptions of each missing/unsatisfied requirement.
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowCheck'
+
+    WorkflowCheck:
+      type: object
+      additionalProperties: false
+      required:
+        - checkId
+        - name
+        - severity
+      properties:
+        checkId:
+          type: string
+          example: PARTY_PASSPORT:transferee:onur_yegenoglu
+        name:
+          type: string
+          example: Passport per party
+        passed:
+          type:
+            - boolean
+            - "null"
+          description: true=satisfied, false=not satisfied, null=not yet evaluable.
+        severity:
+          type: string
+          enum:
+            - error
+            - warning
+        subject:
+          type:
+            - string
+            - "null"
+          description: The entity the check concerns (e.g. a party name).
+          example: Onur Yegenoglu
+        documentType:
+          type:
+            - string
+            - "null"
+        message:
+          type:
+            - string
+            - "null"
+          example: Passport for Onur Yegenoglu (transferee) has not been uploaded.
+
+    JobProgress:
+      type: object
+      additionalProperties: false
+      properties:
+        percentage:
+          type: integer
+          minimum: 0
+          maximum: 100
+        currentStage:
+          type: string
+          enum:
+            - QUEUED
+            - EXTRACTING
+            - VALIDATING
+            - DONE
+          description: The stage the job is predominantly in
+
+    DocumentSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - documentId
+        - fileName
+        - status
+      properties:
+        documentId:
+          type: string
+          example: doc_a1b2c3d4
+        fileName:
+          type: string
+          example: share_transfer_cert.pdf
+        documentType:
+          $ref: '#/components/schemas/DocumentType'
+        status:
+          $ref: '#/components/schemas/DocumentProcessingStatus'
+        extractionStatus:
+          $ref: '#/components/schemas/ExtractionStatus'
+        validationStatus:
+          $ref: '#/components/schemas/ValidationStatus'
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+
+    GetJobResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - job
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        job:
+          $ref: '#/components/schemas/JobSummary'
+
+    OverallHealth:
+      type: string
+      enum:
+        - HEALTHY
+        - ATTENTION
+        - BLOCKED
+        - PROCESSING
+      description: >
+        UI rollup for job state. PROCESSING while work is in flight; BLOCKED when
+        the job or a document failed technically; ATTENTION when workflow or
+        corrections need user action; HEALTHY when nothing is blocking.
+
+    JobDetailHighlight:
+      type: object
+      additionalProperties: false
+      required:
+        - key
+        - label
+        - value
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        value:
+          type: string
+        severity:
+          type: string
+          enum:
+            - success
+            - info
+            - warning
+            - error
+
+    JobTimelineEvent:
+      type: object
+      additionalProperties: false
+      required:
+        - eventId
+        - kind
+        - stage
+        - title
+        - status
+      properties:
+        eventId:
+          type: string
+        at:
+          type: string
+          format: date-time
+        kind:
+          type: string
+          enum:
+            - job
+            - document
+        stage:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+          enum:
+            - completed
+            - active
+            - failed
+            - pending
+        documentId:
+          type: string
+
+    JobDetailIssue:
+      type: object
+      additionalProperties: false
+      required:
+        - issueId
+        - category
+        - severity
+        - title
+        - message
+      properties:
+        issueId:
+          type: string
+        category:
+          type: string
+          enum:
+            - workflow
+            - validation
+            - document
+            - correction
+        severity:
+          type: string
+          enum:
+            - error
+            - warning
+            - info
+        title:
+          type: string
+        message:
+          type: string
+        documentId:
+          type: string
+        documentType:
+          type: string
+        actionId:
+          type: string
+        checkId:
+          type: string
+        ruleIds:
+          type: array
+          items:
+            type: string
+
+    JobDetailLinks:
+      type: object
+      additionalProperties: false
+      required:
+        - job
+        - documents
+        - detail
+      properties:
+        job:
+          type: string
+        documents:
+          type: string
+        detail:
+          type: string
+
+    JobDetailOverview:
+      type: object
+      additionalProperties: false
+      required:
+        - jobId
+        - status
+        - totalDocuments
+        - completedDocuments
+        - failedDocuments
+        - overallHealth
+        - canCancel
+        - canRetry
+      properties:
+        jobId:
+          type: string
+        jobType:
+          $ref: '#/components/schemas/JobType'
+        status:
+          $ref: '#/components/schemas/JobStatus'
+        priority:
+          type: string
+          enum:
+            - LOW
+            - NORMAL
+            - HIGH
+        totalDocuments:
+          type: integer
+          minimum: 0
+        completedDocuments:
+          type: integer
+          minimum: 0
+        failedDocuments:
+          type: integer
+          minimum: 0
+        progress:
+          $ref: '#/components/schemas/JobProgress'
+        overallHealth:
+          $ref: '#/components/schemas/OverallHealth'
+        canCancel:
+          type: boolean
+        canRetry:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        callbackUrl:
+          type: string
+          format: uri
+
+    JobDetailDocument:
+      type: object
+      additionalProperties: false
+      required:
+        - document
+        - displayTitle
+        - sortOrder
+        - badges
+        - failedValidationCount
+        - passedValidationCount
+      properties:
+        document:
+          $ref: '#/components/schemas/DocumentTransaction'
+        displayTitle:
+          type: string
+        sortOrder:
+          type: integer
+          minimum: 0
+        badges:
+          type: array
+          items:
+            type: string
+        failedValidationCount:
+          type: integer
+          minimum: 0
+        passedValidationCount:
+          type: integer
+          minimum: 0
+
+    DocumentRefLinks:
+      type: object
+      required: [transaction, extraction, validations]
+      properties:
+        transaction:
+          type: string
+        extraction:
+          type: string
+        validations:
+          type: string
+
+    DocumentRef:
+      type: object
+      required: [documentId, fileName, links]
+      properties:
+        documentId:
+          type: string
+        documentType:
+          type: string
+        fileName:
+          type: string
+        status:
+          type: string
+        links:
+          $ref: '#/components/schemas/DocumentRefLinks'
+
+    MainDocumentView:
+      type: object
+      description: Primary document (e.g. share transfer certificate) with key extracted fields.
+      required: [document, displayTitle]
+      properties:
+        document:
+          $ref: '#/components/schemas/DocumentRef'
+        displayTitle:
+          type: string
+        companyName:
+          type: string
+        entityNumber:
+          type: string
+        documentTitle:
+          type: string
+        transferDate:
+          type: string
+        transactionCount:
+          type: integer
+        transactions:
+          type: array
+          items:
+            type: object
+        extractedSummary:
+          type: object
+        validationSummary:
+          $ref: '#/components/schemas/ValidationSummary'
+
+    PartyLinkedDocument:
+      type: object
+      required: [document, displayTitle]
+      properties:
+        document:
+          $ref: '#/components/schemas/DocumentRef'
+        displayTitle:
+          type: string
+        personalInfo:
+          type: object
+        validationSummary:
+          $ref: '#/components/schemas/ValidationSummary'
+
+    PartyView:
+      type: object
+      required: [partyId, role, name, certificateDetails, documents]
+      properties:
+        partyId:
+          type: string
+        role:
+          type: string
+          enum: [transferor, transferee]
+        name:
+          type: string
+        certificateDetails:
+          type: object
+          description: Party-specific slices from the certificate (shareholding, transactions, signatures).
+        personalInfo:
+          type: object
+          description: Merged personal info from linked passport / Emirates ID documents.
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/PartyLinkedDocument'
+        workflowStatus:
+          type: object
+          properties:
+            checkId:
+              type: string
+            requirementName:
+              type: string
+            passed:
+              type: boolean
+            message:
+              type: string
+            requiredDocumentType:
+              type: string
+
+    JobPresentation:
+      type: object
+      description: Case-oriented UI layout (main document, parties, supporting documents).
+      required: [viewType, partyCount, supportingDocuments]
+      properties:
+        viewType:
+          type: string
+          example: shareTransfer
+        partyCount:
+          type: integer
+        transferorCount:
+          type: integer
+        transfereeCount:
+          type: integer
+        mainDocument:
+          $ref: '#/components/schemas/MainDocumentView'
+        parties:
+          type: array
+          items:
+            $ref: '#/components/schemas/PartyView'
+        supportingDocuments:
+          type: object
+          properties:
+            totalCount:
+              type: integer
+            countByType:
+              type: object
+              additionalProperties:
+                type: integer
+            unassigned:
+              type: array
+              items:
+                type: object
+
+    JobDetailView:
+      type: object
+      additionalProperties: false
+      required:
+        - overview
+        - documents
+        - issues
+        - highlights
+        - timeline
+        - links
+      properties:
+        overview:
+          $ref: '#/components/schemas/JobDetailOverview'
+        presentation:
+          $ref: '#/components/schemas/JobPresentation'
+        workflowValidation:
+          $ref: '#/components/schemas/WorkflowValidation'
+        correctionPlan:
+          $ref: '#/components/schemas/CorrectionPlan'
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/JobDetailDocument'
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/JobDetailIssue'
+        highlights:
+          type: array
+          items:
+            $ref: '#/components/schemas/JobDetailHighlight'
+        timeline:
+          type: array
+          items:
+            $ref: '#/components/schemas/JobTimelineEvent'
+        links:
+          $ref: '#/components/schemas/JobDetailLinks'
+
+    GetJobDetailResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - detail
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        detail:
+          $ref: '#/components/schemas/JobDetailView'
+
+    ListJobsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - jobs
+        - pagination
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        jobs:
+          type: array
+          items:
+            $ref: '#/components/schemas/JobSummary'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    CancelJobResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - job
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        job:
+          type: object
+          properties:
+            jobId:
+              type: string
+            status:
+              $ref: '#/components/schemas/JobStatus'
+
+    ReplaceDocument:
+      type: object
+      additionalProperties: false
+      required:
+        - documentId
+        - source
+      properties:
+        documentId:
+          type: string
+          description: The existing document to replace.
+          example: doc_4ce7fdc342
+        source:
+          type: string
+          description: Corrected document location (local path, s3:// or https:// URI).
+          example: https://example.com/files/sample.pdf
+
+    RetryJobRequest:
+      type: object
+      additionalProperties: false
+      description: >
+        Drives the same-job correction flow. Any combination of the three
+        actions may be supplied. An empty body re-runs all FAILED documents.
+      properties:
+        documentIds:
+          type: array
+          description: >
+            Re-run these FAILED documents against the same source (technical
+            retries). If omitted and no other action is given, all FAILED
+            documents are re-run.
+          items:
+            type: string
+          example:
+            - doc_a1b2c3d4
+        addFiles:
+          type: array
+          description: >
+            Add new document(s) to the job — fixes missing-document workflow
+            gaps (e.g. a party's passport that was never uploaded).
+          items:
+            type: string
+          example:
+            - https://example.com/files/sample.pdf
+        replaceDocuments:
+          type: array
+          description: Replace invalid document(s) with a corrected source and re-process.
+          items:
+            $ref: '#/components/schemas/ReplaceDocument'
+
+    RetryJobResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - retriedDocuments
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        retriedDocuments:
+          type: array
+          items:
+            type: string
+          description: Document IDs that were re-queued against the same source.
+        addedDocuments:
+          type: array
+          items:
+            type: string
+          description: Document IDs newly added to the job.
+        replacedDocuments:
+          type: array
+          items:
+            type: string
+          description: Document IDs whose source was replaced and re-processed.
+        job:
+          $ref: '#/components/schemas/JobSummary'
+          description: The updated job (with refreshed workflowValidation).
+
+    # ─── Document Transaction Schemas ──────────────────────────────────
+    ListDocumentsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - documents
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/DocumentSummary'
+
+    DocumentTransaction:
+      type: object
+      additionalProperties: false
+      required:
+        - documentId
+        - jobId
+        - fileName
+        - status
+        - createdAt
+      properties:
+        documentId:
+          type: string
+          example: doc_a1b2c3d4
+        jobId:
+          type: string
+          example: job_8f3a2b1c
+        fileName:
+          type: string
+          example: share_transfer_cert.pdf
+        source:
+          type: string
+          description: The original file location submitted (path, s3:// or https:// URI).
+          example: https://example.com/files/sample.pdf
+        fileSize:
+          type: integer
+          description: File size in bytes (local sources only)
+          example: 245780
+        mimeType:
+          type: string
+          example: application/pdf
+        documentType:
+          $ref: '#/components/schemas/DocumentType'
+        status:
+          $ref: '#/components/schemas/DocumentProcessingStatus'
+        extraction:
+          $ref: '#/components/schemas/ExtractionTransaction'
+        validation:
+          $ref: '#/components/schemas/ValidationTransaction'
+        error:
+          $ref: '#/components/schemas/ProcessingError'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ExtractionTransaction:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+      properties:
+        status:
+          $ref: '#/components/schemas/ExtractionStatus'
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        durationMs:
+          type: integer
+          description: Processing duration in milliseconds
+          example: 16000
+        modelUsed:
+          type: string
+          description: LLM model identifier used for extraction
+          example: anthropic.claude-sonnet-4-6-20250514
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Overall extraction confidence score
+          example: 0.94
+        data:
+          type: object
+          description: >
+            Extracted structured data conforming to the document type schema.
+            Shape varies by documentType — see document-type-schemas.json for
+            field definitions.
+          additionalProperties: true
+
+    ValidationTransaction:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+      properties:
+        status:
+          $ref: '#/components/schemas/ValidationStatus'
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        summary:
+          $ref: '#/components/schemas/ValidationSummary'
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationResult'
+
+    ValidationSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - totalRules
+        - passed
+        - failed
+      properties:
+        totalRules:
+          type: integer
+          minimum: 0
+        passed:
+          type: integer
+          minimum: 0
+        failed:
+          type: integer
+          minimum: 0
+        warnings:
+          type: integer
+          minimum: 0
+
+    ValidationResult:
+      type: object
+      additionalProperties: false
+      required:
+        - ruleId
+        - ruleName
+        - passed
+      properties:
+        ruleId:
+          type: string
+          description: Matches the validation rule ID from the document type schema
+          example: ENTITY_NUMBER_PATTERN
+        ruleName:
+          type: string
+          example: Entity Number Pattern
+        passed:
+          type: boolean
+        message:
+          type:
+            - string
+            - "null"
+          description: Populated with the rule's failure message when passed=false
+        extractedValue:
+          type:
+            - string
+            - "null"
+          description: The actual value that was validated (for debugging)
+        expectedPattern:
+          type:
+            - string
+            - "null"
+          description: The expected pattern or value (for pattern/compare checks)
+
+    ProcessingError:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          enum:
+            - UPLOAD_FAILED
+            - UNSUPPORTED_FORMAT
+            - EXTRACTION_FAILED
+            - EXTRACTION_TIMEOUT
+            - VALIDATION_FAILED
+            - MODEL_ERROR
+            - INTERNAL_ERROR
+        message:
+          type: string
+          example: Extraction timed out after 60s
+        retryable:
+          type: boolean
+          default: false
+        occurredAt:
+          type: string
+          format: date-time
+
+    GetDocumentTransactionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - document
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        document:
+          $ref: '#/components/schemas/DocumentTransaction'
+
+    GetExtractionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - extraction
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        extraction:
+          $ref: '#/components/schemas/ExtractionTransaction'
+
+    GetValidationsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - validation
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        validation:
+          $ref: '#/components/schemas/ValidationTransaction'
+
+    # ─── Webhook Schemas ───────────────────────────────────────────────
+    RegisterWebhookRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - url
+        - events
+      properties:
+        url:
+          type: string
+          format: uri
+          description: HTTPS endpoint to receive webhook POST payloads
+          example: https://client.example.com/webhooks/idp
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookEvent'
+          minItems: 1
+          description: Events to subscribe to
+        secret:
+          type: string
+          minLength: 16
+          description: >
+            Shared secret for HMAC-SHA256 signature verification.
+            Will be used to sign payloads via X-Webhook-Signature header.
+
+    RegisterWebhookResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - webhook
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        webhook:
+          $ref: '#/components/schemas/WebhookConfig'
+
+    WebhookConfig:
+      type: object
+      additionalProperties: false
+      required:
+        - webhookId
+        - url
+        - events
+        - active
+      properties:
+        webhookId:
+          type: string
+          example: whk_xyz789
+        url:
+          type: string
+          format: uri
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookEvent'
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    ListWebhooksResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - webhooks
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        webhooks:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookConfig'
+
+    WebhookPayload:
+      type: object
+      description: >
+        Payload structure delivered to registered webhook endpoints.
+        Signed with HMAC-SHA256 via X-Webhook-Signature header.
+      required:
+        - event
+        - timestamp
+        - data
+      properties:
+        event:
+          $ref: '#/components/schemas/WebhookEvent'
+        timestamp:
+          type: string
+          format: date-time
+        data:
+          type: object
+          properties:
+            jobId:
+              type: string
+            documentId:
+              type: string
+              description: Present for document-level events
+            status:
+              type: string
+            resultUrl:
+              type: string
+              format: uri
+              description: Direct link to fetch the full result
+
+    # ─── Pagination ────────────────────────────────────────────────────
+    Pagination:
+      type: object
+      additionalProperties: false
+      required:
+        - hasMore
+      properties:
+        hasMore:
+          type: boolean
+        nextCursor:
+          type: string
+          nullable: true
+          description: Pass as `cursor` query param for next page
+        totalCount:
+          type: integer
+          description: Total number of matching records (if available)
+
+  # ────────────────────────────────────────────────────────────────────
+  # REUSABLE RESPONSES
+  # ────────────────────────────────────────────────────────────────────
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            status:
+              code: 400
+              message: Invalid request payload.
+              errorCode: INVALID_REQUEST
+
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            status:
+              code: 401
+              message: Missing or invalid authentication token.
+              errorCode: UNAUTHORIZED
+
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            status:
+              code: 403
+              message: Insufficient scope for this operation.
+              errorCode: FORBIDDEN
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            status:
+              code: 404
+              message: The requested resource was not found.
+              errorCode: RESOURCE_NOT_FOUND
+
+    RateLimitExceeded:
+      description: Rate limit exceeded
+      headers:
+        X-RateLimit-Limit:
+          schema:
+            type: integer
+        X-RateLimit-Remaining:
+          schema:
+            type: integer
+        X-RateLimit-Reset:
+          schema:
+            type: integer
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            status:
+              code: 429
+              message: Too many requests.
+              errorCode: RATE_LIMIT_EXCEEDED
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            status:
+              code: 500
+              message: Internal server error.
+              errorCode: INTERNAL_ERROR

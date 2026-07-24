@@ -1,0 +1,243 @@
+openapi: 3.1.0
+info:
+  title: Registry Document Type Configuration API
+  version: 1.0.0
+  description: >
+    OpenAPI 3.1 spec for configuring and retrieving document extraction schemas
+    by document type for Share Transfer workflows.
+  contact:
+    name: API Team
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://api.idp.local
+    description: Local API gateway
+
+tags:
+  - name: Document Types
+    description: Configure document-type extraction and validation schemas
+
+security:
+  - oauth2:
+      - documents:configure
+      - documents:read
+
+paths:
+  /v1/document-types/configure:
+    post:
+      tags:
+        - Document Types
+      operationId: configureDocumentType
+      summary: Configure or fetch schema for a document type
+      description: >
+        Returns the JSON schema contract and the concrete template for the
+        requested document type.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfigureDocumentTypeRequest'
+            examples:
+              passport:
+                value:
+                  documentType: passport
+      responses:
+        '200':
+          description: Document type schema returned successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigureDocumentTypeResponse'
+              examples:
+                passport:
+                  value:
+                    status:
+                      code: 200
+                      message: Success
+                    documentTypeConfig:
+                      documentType: passport
+                      baseSchema:
+                        $ref: ./document-type-schemas.json#/baseSchema
+                      template:
+                        $ref: ./document-type-schemas.json#/documentTypeSchemas/passport
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status:
+                  code: 400
+                  message: Invalid or missing documentType.
+                  errorCode: INVALID_REQUEST
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status:
+                  code: 401
+                  message: Missing or invalid authentication token.
+                  errorCode: UNAUTHORIZED
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status:
+                  code: 403
+                  message: Insufficient scope for this operation.
+                  errorCode: FORBIDDEN
+        '404':
+          description: Document type not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status:
+                  code: 404
+                  message: Requested document type is not supported.
+                  errorCode: RESOURCE_NOT_FOUND
+        '429':
+          description: Rate limit exceeded
+          headers:
+            X-RateLimit-Limit:
+              description: Maximum requests allowed in current window
+              schema:
+                type: integer
+            X-RateLimit-Remaining:
+              description: Remaining requests in current window
+              schema:
+                type: integer
+            X-RateLimit-Reset:
+              description: UTC epoch seconds when current window resets
+              schema:
+                type: integer
+            Retry-After:
+              description: Seconds until retry is allowed
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status:
+                  code: 429
+                  message: Too many requests.
+                  errorCode: RATE_LIMIT_EXCEEDED
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status:
+                  code: 500
+                  message: Internal server error.
+                  errorCode: INTERNAL_ERROR
+
+components:
+  securitySchemes:
+    oauth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.idp.local/oauth2/authorize
+          tokenUrl: https://auth.idp.local/oauth2/token
+          scopes:
+            documents:configure: Configure document type schemas
+            documents:read: Read document type schemas
+
+  schemas:
+    Status:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: integer
+          minimum: 100
+          maximum: 599
+          example: 200
+        message:
+          type: string
+          minLength: 1
+          maxLength: 300
+          example: Success
+        errorCode:
+          type: string
+          pattern: '^[A-Z0-9_]{3,100}$'
+          example: INVALID_REQUEST
+
+    ConfigureDocumentTypeRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - documentType
+      properties:
+        documentType:
+          type: string
+          enum:
+            - shareTransferCertificate
+            - passport
+            - emiratesId
+            - proofOfAddress
+          example: passport
+
+    DocumentTypeConfigPayload:
+      type: object
+      additionalProperties: false
+      required:
+        - documentType
+        - baseSchema
+        - template
+      properties:
+        documentType:
+          type: string
+          enum:
+            - shareTransferCertificate
+            - passport
+            - emiratesId
+            - proofOfAddress
+        baseSchema:
+          $ref: ./document-type-schemas.json#/baseSchema
+        template:
+          oneOf:
+            - $ref: './share_transfer_cert_schema.json'
+            - $ref: './passport_schema.json'
+    ConfigureDocumentTypeResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - documentTypeConfig
+      properties:
+        status:
+          $ref: '#/components/schemas/Status'
+        documentTypeConfig:
+          $ref: '#/components/schemas/DocumentTypeConfigPayload'
+
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+      properties:
+        status:
+          allOf:
+            - $ref: '#/components/schemas/Status'
+            - type: object
+              required:
+                - errorCode

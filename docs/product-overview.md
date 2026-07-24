@@ -1,0 +1,8 @@
+About Registry - What have we done so far and established about it?
+
+- We have a working demo system that allows users to upload document(s) and extract data from them which OCR processing that is happening.
+- Document Extraction API is the main single API here which processes any given document. Enabled with a document type input, pre-configured document template schema (passport, resident id card etc.), it extracts the data. Also pre-configured validation rules, (written in natural language) for each document type, validates the document type 
+- API provided a generic interface which any Forms proceessing can use to proccess, validate any kind of documents in this case specifically Share Transfer Certificate request form.
+- But this existing system approach restricts the system to process only 1 document type at a time like regular form based input. We don't have the ability to process multiple document types with this one API approach. Also context management, mult-step workflow handling is not supported.
+- So we are working  a new comprehensive system or Document processing API framework. This allows users to do share transfer request process in single shot. Any chat like conversational interface can integrate with this framework to process any kind of documents and perform any kind of validations as per the document type.
+- It can handle cross-validation workflows, correction steps to process. This also aids auditing process where any user can view list of processed requests, their status, view documents validates, or failes and then correct and re-process the request.

@@ -1,0 +1,361 @@
+{
+    "documentType": "shareTransferCertificate",
+    "documentTitle": "Share Transfer Certificate",
+    "sections": [
+        {
+            "id": "companyInfo",
+            "name": "Company Info"
+        },
+        {
+            "id": "currentShareStructure",
+            "name": "Current Share Structure"
+        },
+        {
+            "id": "transferDetails",
+            "name": "Transfer Details"
+        },
+        {
+            "id": "buyerAndResolution",
+            "name": "Buyer and Resolution"
+        },
+        {
+            "id": "signatures",
+            "name": "Signatures"
+        }
+    ],
+    "fields": [
+        {
+            "key": "companyName",
+            "label": "Company Name",
+            "sectionId": "companyInfo",
+            "dataType": "string",
+            "required": true
+        },
+        {
+            "key": "entityNumber",
+            "label": "Entity Number",
+            "sectionId":"companyInfo",
+            "dataType": "string",
+            "required": true,
+            "pattern": "^ENT[0-9]{3,12}$"
+        },
+        {
+            "key": "documentTitle",
+            "label": "Document Title",
+            "sectionId":"companyInfo",
+            "dataType": "string",
+            "required": true
+        },
+        {
+            "key": "transferors",
+            "label": "Transferors",
+            "description": "The transferors are the current shareholders who are selling the shares.",
+            "sectionId": "currentShareStructure",
+            "dataType": "array",
+            "items": {
+                "dataType": "object",
+                "required": true,
+                "additionalProperties": false,
+                "properties": {
+                    "name": {
+                        "dataType": "string",
+                        "required": true
+                    },
+                    "shareType": {
+                        "dataType": "string",
+                        "required": true
+                    },
+                    "numberOfShares": {
+                        "dataType": "integer",
+                        "required": true
+                    },
+                    "valuePerShare": {
+                        "dataType": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                            "value": {
+                                "dataType": "number",
+                                "required": true
+                            },
+                            "currency": {
+                                "dataType": "string",
+                                "required": true
+                            }
+                        },
+                        "required": true
+                    }
+                }
+            },
+            "required": true
+        },
+        {
+            "key": "transaction",
+            "label": "Transaction Details",
+            "description": "The Transfer of shares from Transferor(s) to Transferee(s)",
+            "sectionId": "transferDetails",
+            "dataType": "array",
+            "items": {
+                "dataType": "object",
+                "required": true,
+                "additionalProperties": false,
+                "properties": {
+                    "sellerName": {
+                        "dataType": "string",
+                        "required": true
+                    },
+                    "buyerName": {
+                        "dataType": "string",
+                        "required": true
+                    },
+                    "buyerRegistrationNumber": {
+                        "dataType": "string",
+                        "required": true
+                    },
+                    "shareTypeTransferred": {
+                        "dataType": "string",
+                        "required": true,
+                        "enum": [
+                            "Ordinary Share",
+                            "Preference Share"
+                        ]
+                    },
+                    "numberOfSharesTransferred": {
+                        "dataType": "integer",
+                        "required": true
+                    },
+                    "valuePerShareTransferred": {
+                        "dataType": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                            "value": {
+                                "dataType": "number",
+                                "required": true
+                            },
+                            "currency": {
+                                "dataType": "string",
+                                "required": true
+                            }
+                        },
+                        "required": true
+                    },
+                    "buyerSignature": {
+                        "dataType": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                            "present": {
+                                "dataType": "boolean",
+                                "required": true
+                            },
+                            "confidence_score": {
+                                "dataType": "number",
+                                "required": true
+                            }
+                        }
+                    }
+                }
+            },
+            "required": true
+        },
+        {
+            "key": "transferees",
+            "label": "Transferees",
+            "description": "The Transferees are the new shareholders who are buying the shares.",
+            "sectionId": "buyerAndResolution",
+            "dataType": "array",
+            "items": {
+                "dataType": "object",
+                "required": true,
+                "additionalProperties": false,
+                "properties": {
+                    "name": {
+                        "dataType": "string",
+                        "required": true
+                    },
+                    "registrationNumber": {
+                        "dataType": "string",
+                        "required": true
+                    },
+                    "shareTypeAfterTransfer": {
+                        "dataType": "string",
+                        "required": true,
+                        "enum": [
+                            "Ordinary Share",
+                            "Preference Share"
+                        ]
+                    },
+                    "numberOfSharesAfterTransfer": {
+                        "dataType": "integer",
+                        "required": true
+                    },
+                    "valuePerShareAfterTransfer": {
+                        "dataType": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                            "value": {
+                                "dataType": "number",
+                                "required": true
+                            },
+                            "currency": {
+                                "dataType": "string",
+                                "required": true
+                            }
+                        },
+                        "required": true
+                    }
+                }
+            },
+            "required": true
+        },
+        {
+            "key": "transferDate",
+            "label": "Transfer Date",
+            "description": "The date of the share transfer.",
+            "sectionId": "signatures",
+            "dataType": "date",
+            "required": true
+        },        
+        {
+            "key": "transfereeSignature",
+            "label": "Transferee Signature",
+            "description": "The Transferee(s) signature(s) confirming the share transfer.",
+            "sectionId": "signatures",
+            "dataType": "array",
+            "items": {
+                "dataType": "object",
+                "required": true,
+                "properties": {
+                    "name": {
+                        "dataType": "string",
+                        "required": true
+                    },
+                    "signature": {
+                        "dataType": "object",
+                        "properties": {
+                            "present": {
+                                "dataType": "boolean",
+                                "required": true
+                            },
+                            "confidence_score": {
+                                "dataType": "number",
+                                "required": true
+                            }
+                        }
+                    }
+                }
+            },
+            "required": true
+        },
+        {
+            "key": "transferorSignature",
+            "label": "Transferor Signature",
+            "description": "The Transferor(s) signature(s) confirming the share transfer.",
+            "sectionId": "signatures",
+            "dataType": "array",
+            "items": { 
+                "dataType": "object",
+                "required": true,
+                "properties": {
+                    "name": {
+                        "dataType": "string",
+                        "required": true
+                    },
+                    "signature": {
+                        "dataType": "object",
+                        "properties": {
+                            "present": {
+                                "dataType": "boolean",
+                                "required": true
+                            },
+                            "confidence_score": {
+                                "dataType": "number",
+                                "required": true
+                            }
+                        }
+                    }
+                }
+            },
+            "required": true
+        },
+        {
+            "key": "approvingSignature",
+            "label": "Approving Signature",
+            "description": "The approving Shareholder(s) signature(s) who are approving the share transfer.",
+            "sectionId": "signatures",
+            "dataType": "array",
+            "items": {
+                "dataType": "object",
+                "required": true,
+                "properties": {
+                    "name": {
+                        "dataType": "string",
+                        "required": true
+                    },
+                    "signature": {
+                        "dataType": "object",
+                        "properties": {
+                            "present": {
+                                "dataType": "boolean",
+                                "required": true
+                            },
+                            "confidence_score": {
+                                "dataType": "number",
+                                "required": true
+                            }
+                        }
+                    }
+                }
+            },
+            "required": true
+        }
+    ],
+    "validationRules": [
+        {
+            "id": "TRANSFER_DATE_PAST_OR_TODAY",
+            "type": "dateCheck",
+            "fieldKey": "transferDate",
+            "message": "Transfer date must be today or earlier."
+        },
+        {
+            "id": "ENTITY_NUMBER_PATTERN",
+            "type": "patternCheck",
+            "fieldKey": "entityNumber",
+            "pattern": "^ENT[0-9]{3,12}$",
+            "message": "Entity Number must follow the pattern ENT followed by 3 to 12 digits."
+        },
+        {
+            "id": "DOCUMENT_TITLE_CHECK",
+            "type": "stringCheck",
+            "fieldKey": "documentTitle",
+            "value": "Share Transfer",
+            "message": "Document title must contain Share Transfer ignoring case."
+        },
+        {
+            "id": "TRASNFERRED_SHARES_CHECK",
+            "type": "compareFieldCheck",
+            "fieldKey": "transaction.numberOfSharesTransferred",
+            "comparitorFieldKey": "transferors.numberOfShares",
+            "message": "The number of shares transferred must be less than or equal to the number of shares owned."
+        },
+        {
+            "id": "TRANSACTION_TRANSFEROR_NAME_CHECK",
+            "type": "compareFieldCheck",
+            "fieldKey": "transaction.sellerName",
+            "comparitorFieldKey": "transferors.name",
+            "message": "Seller name(s) under transaction details must match Transferor name(s) under current share section."
+        },
+        {
+            "id": "TRANSACTION_SHARE_TYPE_CHECK",
+            "type": "compareFieldCheck",
+            "fieldKey": "transaction.shareTypeTransferred",
+            "comparitorFieldKey": "transferors.shareType",
+            "message": "Share type under transaction details must match Share type under current share section."
+        },
+        {
+            "id": "TRANSACTION_VALUE_PER_SHARE_CURRENCY_CHECK",
+            "type": "compareFieldCheck",
+            "fieldKey": "transaction.valuePerShareTransferred.currency",
+            "comparitorFieldKey": "transferors.valuePerShare.currency",
+            "message": "The currency of the value per share under transaction details must match the currency of the value per share under current share section."
+        }
+    ]
+}

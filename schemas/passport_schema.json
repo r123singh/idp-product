@@ -1,0 +1,205 @@
+{
+    "documentType": "passport",
+    "documentTitle": "Passport",
+    "sections": [
+        {
+            "id": "mrz",
+            "name": "Machine-Readable Zone"
+        },
+        {
+            "id": "documentInfo",
+            "name": "Document Information"
+        },
+        {
+            "id": "personalInfo",
+            "name": "Personal Information"
+        },
+        {
+            "id": "passportDetails",
+            "name": "Passport Details"
+        }
+    ],
+    "fields": [
+        {
+            "key": "mrzLine1",
+            "label": "MRZ Line 1",
+            "sectionId": "mrz",
+            "dataType": "string",
+            "required": true
+        },
+        {
+            "key": "mrzLine2",
+            "label": "MRZ Line 2",
+            "sectionId": "mrz",
+            "dataType": "string",
+            "required": true
+        },
+        {
+            "key": "documentType",
+            "label": "Document Type",
+            "sectionId": "documentInfo",
+            "dataType": "string",
+            "required": true,
+            "enum": ["passport"]
+        },
+        {
+            "key": "issuingCountryCode",
+            "label": "Issuing Country Code",
+            "sectionId": "documentInfo",
+            "dataType": "string",
+            "required": true,
+            "pattern": "^[A-Z]{3}$"
+        },
+        {
+            "key": "passportNumber",
+            "label": "Passport Number",
+            "sectionId": "documentInfo",
+            "dataType": "string",
+            "required": true
+        },
+        {
+            "key": "fullName",
+            "label": "Full Name",
+            "sectionId": "personalInfo",
+            "dataType": "string",
+            "required": true
+        },
+        {
+            "key": "firstName",
+            "label": "First Name",
+            "sectionId": "personalInfo",
+            "dataType": "string",
+            "required": true
+        },
+        {
+            "key": "lastName",
+            "label": "Last Name",
+            "sectionId": "personalInfo",
+            "dataType": "string",
+            "required": true
+
+        },
+        {
+            "key": "dateOfBirth",
+            "label": "Date Of Birth",
+            "sectionId": "personalInfo",
+            "dataType": "date",
+            "required": true,
+            "format": "date"
+        },
+        {
+            "key": "gender",
+            "label": "Gender",
+            "sectionId": "personalInfo",
+            "dataType": "string",
+            "required": true
+        },
+        {
+            "key": "placeOfBirth",
+            "label": "Place Of Birth",
+            "sectionId": "personalInfo",
+            "dataType": "string",
+            "required": true
+        },
+        {
+            "key": "motherName",
+            "label": "Mother Name",
+            "sectionId": "personalInfo",
+            "dataType": "string",
+            "required": false
+        },
+        {
+            "key": "dateOfIssue",
+            "label": "Date Of Issue",
+            "sectionId": "passportDetails",
+            "dataType": "date",
+            "required": true,
+            "format": "date"
+        },
+        {
+            "key": "dateOfExpiry",
+            "label": "Date Of Expiry",
+            "sectionId": "passportDetails",
+            "dataType": "date",
+            "required": true,
+            "format": "date"
+        },
+        {
+            "key": "issuingAuthority",
+            "label": "Issuing Authority",
+            "sectionId": "passportDetails",
+            "dataType": "string",
+            "required": true
+        },
+        {
+            "key": "address",
+            "label": "Address",
+            "sectionId": "passportDetails",
+            "dataType": "string",
+            "required": false
+        }
+    ],
+    "validationRules": [
+        {
+            "id": "PASSPORT_NOT_EXPIRED",
+            "type": "dateCheck",
+            "fieldKey": "dateOfExpiry",
+            "message": "Passport expiry date must be in the future at least 3 months from today"
+        },  
+        {
+            "id": "PASSPORT_COUNTRY_CODE_FORMAT",
+            "type": "regex",
+            "fieldKey": "issuingCountryCode",
+            "value": "^[A-Z]{3}$",
+            "message": "Issuing country code must be a 3-letter uppercase code."
+        },
+        {
+            "id": "PASSPORT_FULL_NAME_MRZ_CHECK",
+            "type": "stringCheck",
+            "fieldKey": "fullName",
+            "message": "Full name must match the name mentioned in the MRZ line 1 or line 2."
+        },
+        {
+            "id": "PASSPORT_SURNAME_MRZ_CHECK",
+            "type": "stringCheck",
+            "fieldKey": "lastName",
+            "message": "Last name must match the surname mentioned in the MRZ line 1 or line 2."
+        },
+        {
+            "id": "PASSPORT_COUNTRY_CODE_MATCH_MRZ_CHECK",
+            "type": "stringCheck",
+            "fieldKey": "issuingCountryCode",
+            "message": "Issuing country code must match the country code mentioned in the MRZ line 1 or line 2."
+        },
+        {
+            "id": "PASSPORT_PASSPORT_NUMBER_MATCH_MRZ_CHECK",
+            "type": "stringCheck",
+            "fieldKey": "passportNumber",
+            "message": "Passport number must match the passport number mentioned in the MRZ line 1 or line 2."
+        },
+        {
+            "id": "PASSPORT_DATE_OF_BIRTH_MRZ_CHECK",
+            "type": "dateCheck",
+            "fieldKey": "dateOfBirth",
+            "message": "Date of birth must match the date of birth mentioned in the MRZ line 1 or line 2."
+        },
+        {
+            "id": "PASSPORT_GENDER_MRZ_CHECK",
+            "type": "stringCheck",  
+            "fieldKey": "gender",
+            "message": "Gender must match the gender mentioned in the MRZ line 1 or line 2."
+        },
+        {
+            "id": "PASSPORT_FIRST_NAME_MATCH_FULL_NAME_CHECK",
+            "type": "stringCheck",
+            "fieldKey": "firstName",
+            "message": "First name must match the first word of the full name."
+        },
+        {
+            "id": "PASSPORT_LAST_NAME_MATCH_FULL_NAME_CHECK",
+            "type": "stringCheck",
+            "fieldKey": "lastName",
+            "message": "Last name must match the last word of the full name."
+        }
+    ]
+}

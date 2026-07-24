@@ -1,0 +1,860 @@
+{
+  "baseSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://api.idp.local/schemas/document-type-config.json",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "documentType",
+      "displayName",
+      "sections",
+      "fields",
+      "validationRules"
+    ],
+    "properties": {
+      "documentType": {
+        "type": "string",
+        "enum": [
+          "shareTransferCertificate",
+          "passport",
+          "emiratesId",
+          "proofOfAddress"
+        ]
+      },
+      "displayName": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 120
+      },
+      "sections": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 20,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "name"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-z][a-zA-Z0-9]{2,40}$"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 80
+            }
+          }
+        }
+      },
+      "fields": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 200,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "key",
+            "label",
+            "sectionId",
+            "dataType",
+            "required"
+          ],
+          "properties": {
+            "key": {
+              "type": "string",
+              "pattern": "^[a-z][a-zA-Z0-9]{2,80}$"
+            },
+            "label": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 120
+            },
+            "sectionId": {
+              "type": "string"
+            },
+            "dataType": {
+              "type": "string",
+              "enum": [
+                "string",
+                "number",
+                "integer",
+                "boolean",
+                "date",
+                "array",
+                "object"
+              ]
+            },
+            "required": {
+              "type": "boolean"
+            },
+            "pattern": {
+              "type": "string",
+              "maxLength": 500
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "date",
+                "date-time"
+              ]
+            },
+            "enum": {
+              "type": "array",
+              "maxItems": 30,
+              "items": {
+                "type": "string",
+                "maxLength": 80
+              }
+            },
+            "minLength": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000
+            },
+            "maxLength": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000
+            },
+            "minimum": {
+              "type": "number"
+            },
+            "maximum": {
+              "type": "number"
+            },
+            "description": {
+              "type": "string",
+              "maxLength": 500
+            }
+          }
+        }
+      },
+      "validationRules": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 300,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "type",
+            "message"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Z0-9_]{3,100}$"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "required",
+                "regex",
+                "enum",
+                "datePastOrToday",
+                "dateFuture",
+                "dateWithinLastMonths",
+                "minValue",
+                "maxValue",
+                "equals",
+                "notEmpty",
+                "signaturePresent",
+                "crossField",
+                "crossDocument"
+              ]
+            },
+            "fieldKey": {
+              "type": "string"
+            },
+            "leftFieldKey": {
+              "type": "string"
+            },
+            "rightFieldKey": {
+              "type": "string"
+            },
+            "operator": {
+              "type": "string",
+              "enum": [
+                "=",
+                "!=",
+                ">",
+                ">=",
+                "<",
+                "<=",
+                "contains",
+                "matches"
+              ]
+            },
+            "value": {},
+            "months": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 24
+            },
+            "message": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 300
+            }
+          }
+        }
+      }
+    },
+    "allOf": [
+      {
+        "if": {
+          "properties": {
+            "documentType": {
+              "const": "shareTransferCertificate"
+            }
+          },
+          "required": [
+            "documentType"
+          ]
+        },
+        "then": {
+          "properties": {
+            "displayName": {
+              "const": "Share Transfer Certificate"
+            },
+            "sections": {
+              "const": [
+                {
+                  "id": "companyInfo",
+                  "name": "Company Info"
+                },
+                {
+                  "id": "currentShareStructure",
+                  "name": "Current Share Structure"
+                },
+                {
+                  "id": "transferDetails",
+                  "name": "Transfer Details"
+                },
+                {
+                  "id": "buyerAndResolution",
+                  "name": "Buyer and Resolution"
+                },
+                {
+                  "id": "signatures",
+                  "name": "Signatures"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "if": {
+          "properties": {
+            "documentType": {
+              "const": "passport"
+            }
+          },
+          "required": [
+            "documentType"
+          ]
+        },
+        "then": {
+          "properties": {
+            "displayName": {
+              "const": "Passport"
+            },
+            "sections": {
+              "const": [
+                {
+                  "id": "mrz",
+                  "name": "MRZ"
+                },
+                {
+                  "id": "documentInfo",
+                  "name": "Document Info"
+                },
+                {
+                  "id": "personalInfo",
+                  "name": "Personal Info"
+                },
+                {
+                  "id": "passportDetails",
+                  "name": "Passport Details"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "if": {
+          "properties": {
+            "documentType": {
+              "const": "emiratesId"
+            }
+          },
+          "required": [
+            "documentType"
+          ]
+        },
+        "then": {
+          "properties": {
+            "displayName": {
+              "const": "Emirates ID"
+            },
+            "sections": {
+              "const": [
+                {
+                  "id": "mrzBack",
+                  "name": "Back Side MRZ Data"
+                },
+                {
+                  "id": "documentInfoFront",
+                  "name": "Front Side Document Info"
+                },
+                {
+                  "id": "personalInfoFront",
+                  "name": "Front Side Personal Info"
+                },
+                {
+                  "id": "cardDetails",
+                  "name": "Card Details"
+                },
+                {
+                  "id": "employmentInfoBack",
+                  "name": "Back Side Employment Info"
+                },
+                {
+                  "id": "signatureFront",
+                  "name": "Front Side Signature"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "if": {
+          "properties": {
+            "documentType": {
+              "const": "proofOfAddress"
+            }
+          },
+          "required": [
+            "documentType"
+          ]
+        },
+        "then": {
+          "properties": {
+            "displayName": {
+              "const": "Proof Of Address"
+            },
+            "sections": {
+              "const": [
+                {
+                  "id": "documentInfo",
+                  "name": "Document Info"
+                },
+                {
+                  "id": "personalInfo",
+                  "name": "Personal Info"
+                },
+                {
+                  "id": "documentDetails",
+                  "name": "Document Details"
+                }
+              ]
+            }
+          }
+        }
+      }
+    ]
+  },
+  "documentTypeSchemas": {
+    "shareTransferCertificate": {
+      "displayName": "Share Transfer Certificate",
+      "sections": [
+        {
+          "id": "companyInfo",
+          "name": "Company Info"
+        },
+        {
+          "id": "currentShareStructure",
+          "name": "Current Share Structure"
+        },
+        {
+          "id": "transferDetails",
+          "name": "Transfer Details"
+        },
+        {
+          "id": "buyerAndResolution",
+          "name": "Buyer and Resolution"
+        },
+        {
+          "id": "signatures",
+          "name": "Signatures"
+        }
+      ],
+      "fields": [
+        {
+          "key": "companyName",
+          "label": "Company Name",
+          "sectionId": "companyInfo",
+          "dataType": "string",
+          "required": true,
+          "minLength": 1
+        },
+        {
+          "key": "entityNumber",
+          "label": "Entity Number",
+          "sectionId": "companyInfo",
+          "dataType": "string",
+          "required": true,
+          "pattern": "^ENT[0-9]{3,12}$"
+        },
+        {
+          "key": "documentTitle",
+          "label": "Document Title",
+          "sectionId": "companyInfo",
+          "dataType": "string",
+          "required": true
+        },
+        {
+          "key": "sellerName",
+          "label": "Seller Name",
+          "sectionId": "transferDetails",
+          "dataType": "string",
+          "required": true
+        },
+        {
+          "key": "shareType",
+          "label": "Share Type",
+          "sectionId": "transferDetails",
+          "dataType": "string",
+          "required": true
+        },
+        {
+          "key": "numberOfSharesTransferred",
+          "label": "Number of Shares Transferred",
+          "sectionId": "transferDetails",
+          "dataType": "integer",
+          "required": true,
+          "minimum": 1
+        },
+        {
+          "key": "valuePerShareAed",
+          "label": "Value Per Share (AED)",
+          "sectionId": "transferDetails",
+          "dataType": "number",
+          "required": true,
+          "minimum": 0
+        },
+        {
+          "key": "buyerName",
+          "label": "Buyer Name",
+          "sectionId": "transferDetails",
+          "dataType": "string",
+          "required": true
+        },
+        {
+          "key": "buyerPassportNumber",
+          "label": "Buyer Passport Number",
+          "sectionId": "transferDetails",
+          "dataType": "string",
+          "required": true
+        },
+        {
+          "key": "transferDate",
+          "label": "Transfer Date",
+          "sectionId": "signatures",
+          "dataType": "date",
+          "required": true,
+          "format": "date"
+        },
+        {
+          "key": "buyerSignaturePresent",
+          "label": "Buyer Signature Present",
+          "sectionId": "signatures",
+          "dataType": "boolean",
+          "required": true
+        },
+        {
+          "key": "sellerSignaturePresent",
+          "label": "Seller Signature Present",
+          "sectionId": "signatures",
+          "dataType": "boolean",
+          "required": true
+        }
+      ],
+      "validationRules": [
+        {
+          "id": "DOC_TITLE_CONTAINS_SHARE_TRANSFER",
+          "type": "crossField",
+          "fieldKey": "documentTitle",
+          "operator": "contains",
+          "value": "Share Transfer",
+          "message": "Document title must contain Share Transfer."
+        },
+        {
+          "id": "TRANSFER_DATE_PAST_OR_TODAY",
+          "type": "datePastOrToday",
+          "fieldKey": "transferDate",
+          "message": "Transfer date must be today or earlier."
+        },
+        {
+          "id": "BUYER_SIGNATURE_REQUIRED",
+          "type": "signaturePresent",
+          "fieldKey": "buyerSignaturePresent",
+          "message": "Buyer signature must be present."
+        }
+      ]
+    },
+    "passport": {
+      "displayName": "Passport",
+      "sections": [
+        {
+          "id": "mrz",
+          "name": "MRZ"
+        },
+        {
+          "id": "documentInfo",
+          "name": "Document Info"
+        },
+        {
+          "id": "personalInfo",
+          "name": "Personal Info"
+        },
+        {
+          "id": "passportDetails",
+          "name": "Passport Details"
+        }
+      ],
+      "fields": [
+        {
+          "key": "mrzLine1",
+          "label": "MRZ Line 1",
+          "sectionId": "mrz",
+          "dataType": "string",
+          "required": true
+        },
+        {
+          "key": "mrzLine2",
+          "label": "MRZ Line 2",
+          "sectionId": "mrz",
+          "dataType": "string",
+          "required": true
+        },
+        {
+          "key": "documentType",
+          "label": "Document Type",
+          "sectionId": "documentInfo",
+          "dataType": "string",
+          "required": true,
+          "enum": [
+            "passport"
+          ]
+        },
+        {
+          "key": "issuingCountryCode",
+          "label": "Issuing Country Code",
+          "sectionId": "documentInfo",
+          "dataType": "string",
+          "required": true,
+          "pattern": "^[A-Z]{3}$"
+        },
+        {
+          "key": "passportNumber",
+          "label": "Passport Number",
+          "sectionId": "documentInfo",
+          "dataType": "string",
+          "required": true
+        },
+        {
+          "key": "fullName",
+          "label": "Full Name",
+          "sectionId": "personalInfo",
+          "dataType": "string",
+          "required": true
+        },
+        {
+          "key": "dateOfBirth",
+          "label": "Date Of Birth",
+          "sectionId": "personalInfo",
+          "dataType": "date",
+          "required": true,
+          "format": "date"
+        },
+        {
+          "key": "gender",
+          "label": "Gender",
+          "sectionId": "personalInfo",
+          "dataType": "string",
+          "required": true
+        },
+        {
+          "key": "dateOfExpiry",
+          "label": "Date Of Expiry",
+          "sectionId": "passportDetails",
+          "dataType": "date",
+          "required": true,
+          "format": "date"
+        },
+        {
+          "key": "issuingAuthority",
+          "label": "Issuing Authority",
+          "sectionId": "passportDetails",
+          "dataType": "string",
+          "required": false
+        }
+      ],
+      "validationRules": [
+        {
+          "id": "PASSPORT_NOT_EXPIRED",
+          "type": "dateFuture",
+          "fieldKey": "dateOfExpiry",
+          "message": "Passport expiry date must be in the future."
+        },
+        {
+          "id": "PASSPORT_COUNTRY_CODE_FORMAT",
+          "type": "regex",
+          "fieldKey": "issuingCountryCode",
+          "value": "^[A-Z]{3}$",
+          "message": "Issuing country code must be a 3-letter uppercase code."
+        }
+      ]
+    },
+    "emiratesId": {
+      "displayName": "Emirates ID",
+      "sections": [
+        {
+          "id": "mrzBack",
+          "name": "Back Side MRZ Data"
+        },
+        {
+          "id": "documentInfoFront",
+          "name": "Front Side Document Info"
+        },
+        {
+          "id": "personalInfoFront",
+          "name": "Front Side Personal Info"
+        },
+        {
+          "id": "cardDetails",
+          "name": "Card Details"
+        },
+        {
+          "id": "employmentInfoBack",
+          "name": "Back Side Employment Info"
+        },
+        {
+          "id": "signatureFront",
+          "name": "Front Side Signature"
+        }
+      ],
+      "fields": [
+        {
+          "key": "mrzLine1",
+          "label": "MRZ Line 1",
+          "sectionId": "mrzBack",
+          "dataType": "string",
+          "required": true
+        },
+        {
+          "key": "mrzLine2",
+          "label": "MRZ Line 2",
+          "sectionId": "mrzBack",
+          "dataType": "string",
+          "required": true
+        },
+        {
+          "key": "mrzLine3",
+          "label": "MRZ Line 3",
+          "sectionId": "mrzBack",
+          "dataType": "string",
+          "required": true
+        },
+        {
+          "key": "emiratesIdNumber",
+          "label": "Emirates ID Number",
+          "sectionId": "documentInfoFront",
+          "dataType": "string",
+          "required": true,
+          "pattern": "^784-[0-9]{4}-[0-9]{7}-[0-9]$"
+        },
+        {
+          "key": "fullName",
+          "label": "Full Name",
+          "sectionId": "documentInfoFront",
+          "dataType": "string",
+          "required": true
+        },
+        {
+          "key": "dateOfBirth",
+          "label": "Date Of Birth",
+          "sectionId": "personalInfoFront",
+          "dataType": "date",
+          "required": true,
+          "format": "date"
+        },
+        {
+          "key": "nationality",
+          "label": "Nationality",
+          "sectionId": "personalInfoFront",
+          "dataType": "string",
+          "required": true
+        },
+        {
+          "key": "gender",
+          "label": "Gender",
+          "sectionId": "personalInfoFront",
+          "dataType": "string",
+          "required": true
+        },
+        {
+          "key": "issuingDate",
+          "label": "Issuing Date",
+          "sectionId": "cardDetails",
+          "dataType": "date",
+          "required": true,
+          "format": "date"
+        },
+        {
+          "key": "expiryDate",
+          "label": "Expiry Date",
+          "sectionId": "cardDetails",
+          "dataType": "date",
+          "required": true,
+          "format": "date"
+        },
+        {
+          "key": "cardNumber",
+          "label": "Card Number",
+          "sectionId": "cardDetails",
+          "dataType": "string",
+          "required": true
+        },
+        {
+          "key": "signaturePresent",
+          "label": "Signature Present",
+          "sectionId": "signatureFront",
+          "dataType": "boolean",
+          "required": true
+        }
+      ],
+      "validationRules": [
+        {
+          "id": "EID_NUMBER_FORMAT",
+          "type": "regex",
+          "fieldKey": "emiratesIdNumber",
+          "value": "^784-[0-9]{4}-[0-9]{7}-[0-9]$",
+          "message": "Emirates ID Number must match 784-XXXX-XXXXXXX-X format."
+        },
+        {
+          "id": "EID_ISSUING_DATE_PAST_OR_TODAY",
+          "type": "datePastOrToday",
+          "fieldKey": "issuingDate",
+          "message": "Issuing date must be today or earlier."
+        },
+        {
+          "id": "EID_NOT_EXPIRING_WITHIN_3_MONTHS",
+          "type": "crossField",
+          "fieldKey": "expiryDate",
+          "operator": ">",
+          "value": "today+3months",
+          "message": "Expiry date must be at least 3 months ahead."
+        }
+      ]
+    },
+    "proofOfAddress": {
+      "displayName": "Proof Of Address",
+      "sections": [
+        {
+          "id": "documentInfo",
+          "name": "Document Info"
+        },
+        {
+          "id": "personalInfo",
+          "name": "Personal Info"
+        },
+        {
+          "id": "documentDetails",
+          "name": "Document Details"
+        }
+      ],
+      "fields": [
+        {
+          "key": "documentType",
+          "label": "Document Type",
+          "sectionId": "documentInfo",
+          "dataType": "string",
+          "required": true,
+          "enum": [
+            "proofOfAddress"
+          ]
+        },
+        {
+          "key": "documentIssuerName",
+          "label": "Document Issuer Name",
+          "sectionId": "documentInfo",
+          "dataType": "string",
+          "required": true
+        },
+        {
+          "key": "fullName",
+          "label": "Full Name",
+          "sectionId": "personalInfo",
+          "dataType": "string",
+          "required": true
+        },
+        {
+          "key": "fullAddress",
+          "label": "Full Address",
+          "sectionId": "personalInfo",
+          "dataType": "string",
+          "required": true,
+          "minLength": 10
+        },
+        {
+          "key": "city",
+          "label": "City",
+          "sectionId": "personalInfo",
+          "dataType": "string",
+          "required": false
+        },
+        {
+          "key": "country",
+          "label": "Country",
+          "sectionId": "personalInfo",
+          "dataType": "string",
+          "required": false
+        },
+        {
+          "key": "issueDate",
+          "label": "Date",
+          "sectionId": "documentDetails",
+          "dataType": "date",
+          "required": true,
+          "format": "date"
+        }
+      ],
+      "validationRules": [
+        {
+          "id": "POA_ISSUE_DATE_WITHIN_3_MONTHS",
+          "type": "dateWithinLastMonths",
+          "fieldKey": "issueDate",
+          "months": 3,
+          "message": "Proof of Address must be issued within the last 3 months."
+        },
+        {
+          "id": "POA_FULL_ADDRESS_NOT_EMPTY",
+          "type": "notEmpty",
+          "fieldKey": "fullAddress",
+          "message": "Full Address is required."
+        }
+      ]
+    }
+  }
+}

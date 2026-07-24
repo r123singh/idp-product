@@ -1,0 +1,367 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "name": "Intelligent Document Processing Jobs API",
+    "description": "Async document processing job orchestration API for Share transfer workflows.\n\n## Import\n1. **Import** this collection (File → Import).\n2. **Import** one environment: `Registry-Jobs-AWS.postman_environment.json` (deployed) or `Registry-Jobs-Local.postman_environment.json` (local dev).\n3. Select the environment in the top-right dropdown.\n4. Run **Create Job — Share Transfer (happy case)** first — it saves `jobId` and `documentId` for other requests.\n\n## Auth\nDeployed AWS: set `apiKey` in the environment (`x-api-key` header).\nLocal (`python local_runner.py`): leave `apiKey` empty — auth is disabled.\n\n## Variables (auto-set by tests)\n| Variable | Set from |\n|----------|----------|\n| `jobId` | Create Job / Get Job responses |\n| `documentId` | First document in job |\n| `webhookId` | Register Webhook |",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      { "key": "key", "value": "x-api-key", "type": "string" },
+      { "key": "value", "value": "{{apiKey}}", "type": "string" },
+      { "key": "in", "value": "header", "type": "string" }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.environment.get('apiKey') && !pm.collectionVariables.get('apiKey')) {",
+          "    pm.request.headers.remove('x-api-key');",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "https://example.com/extract" },
+    { "key": "apiKey", "value": "5dPxMvYTHptXsS90r6nLjQwOqGFkbVif" },
+    { "key": "jobId", "value": "" },
+    { "key": "documentId", "value": "" },
+    { "key": "webhookId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Jobs",
+      "item": [
+        {
+          "name": "Create Job — Share Transfer (happy case)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 202 Accepted', () => pm.response.to.have.status(202));",
+                  "const json = pm.response.json();",
+                  "pm.test('Job accepted', () => pm.expect(json.status.code).to.eql(202));",
+                  "if (json.job?.jobId) {",
+                  "    pm.collectionVariables.set('jobId', json.job.jobId);",
+                  "    pm.environment.set('jobId', json.job.jobId);",
+                  "}",
+                  "if (json.job?.documents?.[0]?.documentId) {",
+                  "    pm.collectionVariables.set('documentId', json.job.documents[0].documentId);",
+                  "    pm.environment.set('documentId', json.job.documents[0].documentId);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jobType\": \"shareTransfer\",\n  \"files\": [\n    \"https://example.com/files/sample.pdf",\n    \"https://example.com/files/sample.pdf",\n    \"https://example.com/files/sample.pdf"\n  ],\n  \"priority\": \"NORMAL\",\n  \"metadata\": {\n    \"requestId\": \"REQ-POSTMAN-001\"\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/v1/jobs",
+            "description": "Submit share transfer certificate + transferor/transferee passports. Saves `jobId` and `documentId` for subsequent requests."
+          }
+        },
+        {
+          "name": "Create Job — Share Transfer (missing passport)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 202 Accepted', () => pm.response.to.have.status(202));",
+                  "const json = pm.response.json();",
+                  "if (json.job?.jobId) {",
+                  "    pm.collectionVariables.set('jobId', json.job.jobId);",
+                  "    pm.environment.set('jobId', json.job.jobId);",
+                  "}",
+                  "if (json.job?.documents?.[0]?.documentId) {",
+                  "    pm.collectionVariables.set('documentId', json.job.documents[0].documentId);",
+                  "    pm.environment.set('documentId', json.job.documents[0].documentId);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jobType\": \"shareTransfer\",\n  \"files\": [\n    \"https://example.com/files/sample.pdf",\n    \"https://example.com/files/sample.pdf"\n  ],\n  \"metadata\": { \"requestId\": \"REQ-POSTMAN-002\" }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/v1/jobs",
+            "description": "Certificate + one passport only — triggers workflow validation failure (missing transferor passport) after processing completes."
+          }
+        },
+        {
+          "name": "List Jobs",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Has pagination', () => pm.expect(json.pagination).to.be.an('object');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/v1/jobs?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "jobs"],
+              "query": [
+                { "key": "status", "value": "COMPLETED", "disabled": true },
+                { "key": "jobType", "value": "shareTransfer", "disabled": true },
+                { "key": "createdAfter", "value": "2026-01-01T00:00:00Z", "disabled": true },
+                { "key": "createdBefore", "value": "2026-12-31T23:59:59Z", "disabled": true },
+                { "key": "limit", "value": "20" },
+                { "key": "cursor", "value": "0", "disabled": true }
+              ]
+            },
+            "description": "List jobs with optional filters. Enable query params as needed."
+          }
+        },
+        {
+          "name": "Get Job Status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "if (json.job?.jobId) {",
+                  "    pm.collectionVariables.set('jobId', json.job.jobId);",
+                  "}",
+                  "if (json.job?.documents?.[0]?.documentId) {",
+                  "    pm.collectionVariables.set('documentId', json.job.documents[0].documentId);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/jobs/{{jobId}}",
+            "description": "Poll job status, progress, workflowValidation, and correctionPlan. Uses `{{jobId}}` from Create Job."
+          }
+        },
+        {
+          "name": "Get Job Detail (UI)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Has detail payload', () => pm.expect(json.detail).to.be.an('object');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/jobs/{{jobId}}/detail",
+            "description": "Single aggregated payload for job review UI: overview, issues, highlights, timeline, presentation (share transfer parties), full documents."
+          }
+        },
+        {
+          "name": "Cancel Job",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200 or 409', () => pm.expect([200, 409]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/v1/jobs/{{jobId}}/cancel",
+            "description": "Cancel a job in ACCEPTED or PROCESSING state. Returns 409 if already terminal."
+          }
+        },
+        {
+          "name": "Retry — Re-run failed documents",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 202 or 409', () => pm.expect([202, 409]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"documentIds\": [\"{{documentId}}\"]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/v1/jobs/{{jobId}}/retry",
+            "description": "Re-run extraction for specific failed document IDs."
+          }
+        },
+        {
+          "name": "Retry — Replace document",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"replaceDocuments\": [\n    {\n      \"documentId\": \"{{documentId}}\",\n      \"source\": \"https://example.com/files/sample.pdf"\n    }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/v1/jobs/{{jobId}}/retry",
+            "description": "Replace a document slot with a new file URL and re-run extraction."
+          }
+        },
+        {
+          "name": "Retry — Sources (correction plan)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sources\": [\n    \"https://example.com/files/sample.pdf"\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/v1/jobs/{{jobId}}/retry",
+            "description": "Upload bare URLs; API matches them to correctionPlan actions (add/replace) using names from first-pass extraction."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Documents",
+      "item": [
+        {
+          "name": "List Documents",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "if (json.documents?.[0]?.documentId) {",
+                  "    pm.collectionVariables.set('documentId', json.documents[0].documentId);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/v1/jobs/{{jobId}}/documents",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "jobs", "{{jobId}}", "documents"],
+              "query": [
+                { "key": "status", "value": "COMPLETED", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Document",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/jobs/{{jobId}}/documents/{{documentId}}"
+          }
+        },
+        {
+          "name": "Get Extraction",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/jobs/{{jobId}}/documents/{{documentId}}/extraction"
+          }
+        },
+        {
+          "name": "Get Validations",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/jobs/{{jobId}}/documents/{{documentId}}/validations"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Webhooks",
+      "item": [
+        {
+          "name": "Register Webhook",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "if (json.webhook?.webhookId) {",
+                  "    pm.collectionVariables.set('webhookId', json.webhook.webhookId);",
+                  "    pm.environment.set('webhookId', json.webhook.webhookId);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://example.com/webhooks/idp-jobs\",\n  \"events\": [\n    \"job.completed\",\n    \"job.failed\",\n    \"document.extracted\",\n    \"document.failed\"\n  ],\n  \"secret\": \"whsec_postman_demo\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/v1/webhooks"
+          }
+        },
+        {
+          "name": "List Webhooks",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/webhooks"
+          }
+        },
+        {
+          "name": "Delete Webhook",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/v1/webhooks/{{webhookId}}"
+          }
+        }
+      ]
+    }
+  ]
+}
